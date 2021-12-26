@@ -10,7 +10,7 @@
 # Please see http://i3wm.org/docs/userguide.html for a complete reference!
 
 set $mod Mod4
-set $TERMINAL "terminology"
+set $TERMINAL "(terminology || mate-terminal)"
 #set $TERMINAL "mate-terminal"
 #
 
@@ -216,17 +216,17 @@ bar {
 }
 
 
-#bar {
-#     tray_output none
-#     output HDMI-1
-#     # ajutiselt testimine
-#     #output eDP-1
-#     id bar-1
-#     font pango:Ubuntu 10
-#     position bottom
-#     workspace_buttons no
-#     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/i3/py3status-bar-1.conf --debug
-#}
+bar {
+     tray_output none
+     output HDMI-1
+     # ajutiselt testimine
+     #output eDP-1
+     id bar-1
+     font pango:Ubuntu 10
+     position bottom
+     workspace_buttons no
+     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/i3/py3status-bar-1.conf --debug
+}
 
 
 bar {
