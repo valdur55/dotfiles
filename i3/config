@@ -10,7 +10,7 @@
 # Please see http://i3wm.org/docs/userguide.html for a complete reference!
 
 set $mod Mod4
-set $TERMINAL "(terminology || mate-terminal)"
+set $TERMINAL "(terminology || mate-terminal || alacritty)"
 #set $TERMINAL "mate-terminal"
 #
 
@@ -111,21 +111,22 @@ bindsym $mod+a focus parent
 # focus the child container
 #bindsym $mod+d focus child
 set $laptop-screen eDP-1
+set $left-screen eDP-1
 set $center-screen HDMI-1
-set $left-screen DVI-I-1-1
+set $rigth-screen DVI-I-1-1
 
-workspace 1 output $laptop-screen
+workspace 1  output $laptop-screen
 
-workspace 2 output $center-screen $laptop-screen
-workspace 3 output $center-screen $laptop-screen
-workspace 4 output $center-screen $laptop-screen
-workspace 5 output $center-screen $laptop-screen
-workspace 6 output $center-screen $laptop-screen
-workspace 7 output $center-screen $laptop-screen
+workspace 2  output $center-screen $laptop-screen
+workspace 3  output $center-screen $laptop-screen
+workspace 4  output $center-screen $laptop-screen
+workspace 5  output $center-screen $laptop-screen
+workspace 6  output $center-screen $laptop-screen
+workspace 7  output $center-screen $laptop-screen
 
-workspace 8 output $left-screen $laptop-screen
-workspace 9 output $left-screen $laptop-screen
-workspace 10 output $left-screen $laptop-screen
+workspace 8  output $rigth-screen $center-screen $laptop-screen
+workspace 9  output $rigth-screen $center-screen $laptop-screen
+workspace 10 output $rigth-screen $center-screen $laptop-screen
 
 # switch to workspace
 bindsym $mod+1 workspace 1
@@ -197,8 +198,8 @@ bindsym $mod+r mode "resize"
 bar {
        id bar-0
        tray_output primary
-       output HDMI-1
-       output eDP-1
+       output $left-screen
+       output $center-screen
 #      font pango: Hack 10,Symbola 10
 #       font pango: Hack 10
 #       font pango: Hack 10, Segoe UI Emoji 10
@@ -218,9 +219,9 @@ bar {
 
 bar {
      tray_output none
-     output HDMI-1
-     # ajutiselt testimine
-     #output eDP-1
+     output $center-screen
+     #ajutiselt testimine
+#     output $laptop-screen
      id bar-1
      font pango:Ubuntu 10
      position bottom
@@ -231,7 +232,7 @@ bar {
 
 bar {
      tray_output none
-     output DVI-I-1-1
+     output $rigth-screen
      id bar-2
      font pango:Ubuntu 10
      position top
@@ -243,8 +244,8 @@ bar {
 focus_follows_mouse no
 
 # Monitor related stuff
-#bindsym $mod+m         exec xrandr --output HDMI1 --off
-#bindsym $mod+shift+m   exec xrandr --output HDMI1 --auto --left-of eDP1
+#bindsym $mod+m         exec xrandr --output $center-screen --off
+#bindsym $mod+shift+m   exec xrandr --output $center-screen --auto --rigth-of $left-screen
 
 # move current workspace between monitors
 bindsym $mod+Control+h move workspace to output left
