@@ -198,8 +198,7 @@ bindsym $mod+r mode "resize"
 bar {
        id bar-0
        tray_output primary
-       output $left-screen
-       output $center-screen
+#       output $left-screen
 #      font pango: Hack 10,Symbola 10
 #       font pango: Hack 10
 #       font pango: Hack 10, Segoe UI Emoji 10
@@ -211,7 +210,7 @@ bar {
         position top
 #        status_command py3status
 #        status_command py3status -l ~/py3status.log --debug
-        status_command py3status -l ~/py3status.log --debug
+        status_command py3status -l ~/py3status.log
 #        status_command py3status
 #        status_command i3blocks -c ~/.i3/i3blocks.conf
 }
@@ -227,17 +226,6 @@ bar {
      position bottom
      workspace_buttons no
      status_command py3status -l ~/py3status-bar-1.log -c ~/.config/i3/py3status-bar-1.conf --debug
-}
-
-
-bar {
-     tray_output none
-     output $rigth-screen
-     id bar-2
-     font pango:Ubuntu 10
-     position top
-     #status_command py3status -l ~/py3status-bar-2.log -c ~/.i3/py3status-main-noseconds.conf
-     status_command py3status -c ~/.config/i3/py3status-main-noseconds.conf
 }
 
 # Click to focus window
@@ -329,7 +317,7 @@ exec --no-startup-id nitrogen --restore
 #exec skype
 #exec skypeforlinux
 #exec slack
-exec --no-startup-id compton
+exec --no-startup-id compton --glx-use-copysubbuffermesa --glx-no-rebind-pixmap
 exec --no-startup-id mate-power-manager
 #exec --no-startup-id ferdi
 #exec --no-startup-id signal
