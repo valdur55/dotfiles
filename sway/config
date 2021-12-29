@@ -11,7 +11,7 @@
 
 set $mod Mod4
 #set $TERMINAL "(alacritty || terminology)"
-set $TERMINAL terminology
+set $TERMINAL "(ELM_DISPLAY=wl terminology --borderless)"
 input * xkb_layout "ee"
 #set $TERMINAL "mate-terminal"
 #
@@ -45,7 +45,7 @@ bindsym $mod+Shift+q kill
 #bindsym $mod+d exec rofi -show combi -switchers combi -combi-modi run
 
 #bindsym $mod+d exec rofi -show run
-bindsym $mod+d exec rofi -combi-modi window#run -show combi -modi combi
+bindsym $mod+d exec rofi -combi-modi window#run -show combi -modi combi | xargs swaymsg exec --
 #set $mod Mod4
 #pppmmnnnset $Alt Mod1
 bindsym $mod+m exec --no-startup-id menu_mpd
@@ -120,6 +120,9 @@ set $left-screen $laptop-screen
 set $center-screen HDMI-A-1
 
 set $rigth-screen DVI-I-1-1
+
+output $left-screen resolution 1366 768 position 0 0
+output $center-screen resolution 1920 1080 position 1366 0
 
 workspace 1 output $laptop-screen
 
@@ -206,9 +209,7 @@ bindsym $mod+r mode "resize"
 # finds out, if available)
 bar {
        id bar-0
-       tray_output primary
-       output $laptop-screen
-       output $center-screen
+       tray_output *
 #      font pango: Hack 10,Symbola 10
 #       font pango: Hack 10
 #       font pango: Hack 10, Segoe UI Emoji 10
@@ -218,10 +219,10 @@ bar {
         font pango:Ubuntu 10
 #        font Segoe UI Emoji
         position top
-#        status_command py3status
-#        status_command py3status -l ~/py3status.log --debug
-        status_command py3status -l ~/py3status.log --debug
-#        status_command py3status
+#        status_command py3status --wm=sway
+#        status_command py3status -l ~/py3status.log --debug --wm=sway
+        status_command py3status -l ~/py3status.log --wm=sway
+#        status_command py3status --wm=sway
 #        status_command i3blocks -c ~/.i3/i3blocks.conf
 }
 
@@ -235,18 +236,7 @@ bar {
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/sway/py3status-bar-1.conf --debug
-}
-
-
-bar {
-     tray_output none
-     output $rigth-screen
-     id bar-2
-     font pango:Ubuntu 10
-     position top
-     #status_command py3status -l ~/py3status-bar-2.log -c ~/.i3/py3status-main-noseconds.conf
-     status_command py3status -c ~/.config/sway/py3status-main-noseconds.conf
+     status_command py3status --wm=sway -l ~/py3status-bar-1.log -c ~/.config/sway/py3status-bar-1.conf --debug
 }
 
 # Click to focus window
