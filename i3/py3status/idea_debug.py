@@ -6,24 +6,21 @@ Attach pydevd debuger on py3status load..
 SAMPLE OUTPUT
 {'full_text': '🐛'}
 """
-
-import pydevd_pycharm
 import pydevd
 
 def connect_to_pycharm():
-    result = "🍀"
     try:
-        pydevd_pycharm.settrace('localhost', port=6767, stdoutToServer=True, stderrToServer=True, suspend=False)
-        result = "🐛"
+        pydevd.settrace('localhost', port=6767, stdoutToServer=False, stderrToServer=False, suspend=False)
+        return "🐛"
     except Exception:
-        pass
-    return result
+        return "🍀"
 
 init_result = connect_to_pycharm()
 
 class Py3status:
     """
     """
+    some_config_val = None
     _connection_result = init_result
 
     def _post_config_hoop(self):
@@ -46,8 +43,6 @@ class Py3status:
             pass
 
         self._connect_to_pycharm()
-        self.py3.update()
-        return
 
 
 if __name__ == "__main__":

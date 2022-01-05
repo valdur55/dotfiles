@@ -44,7 +44,9 @@ bindsym $mod+Shift+q kill
 #bindsym $mod+d exec dmenu_run
 #bindsym $mod+d exec rofi -show combi -switchers combi -combi-modi run
 
-#bindsym $mod+d exec rofi -show run
+#bindsym $mod+d exec wofi -show drun | xargs swaymsg exec --
+
+
 bindsym $mod+d exec rofi -combi-modi window#run -show combi -modi combi | xargs swaymsg exec --
 #set $mod Mod4
 #pppmmnnnset $Alt Mod1
@@ -119,10 +121,12 @@ set $left-screen $laptop-screen
 #For sway
 set $center-screen HDMI-A-1
 
-set $rigth-screen DVI-I-1-1
+set $rigth-screen DVI-I-1
 
 output $left-screen resolution 1366 768 position 0 0
 output $center-screen resolution 1920 1080 position 1366 0
+output $rigth-screen resolution 1680 1050 position 3286 0
+#output DVI-I-1 resolution 1680 1050 position 1366 0
 
 workspace 1 output $laptop-screen
 
@@ -221,7 +225,7 @@ bar {
         position top
 #        status_command py3status --wm=sway
 #        status_command py3status -l ~/py3status.log --debug --wm=sway
-        status_command py3status -l ~/py3status.log --wm=sway
+#        status_command py3status -l ~/py3status.log --wm=sway
 #        status_command py3status --wm=sway
 #        status_command i3blocks -c ~/.i3/i3blocks.conf
 }
@@ -236,7 +240,7 @@ bar {
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-     status_command py3status --wm=sway -l ~/py3status-bar-1.log -c ~/.config/sway/py3status-bar-1.conf --debug
+#     status_command py3status --wm=sway -l ~/py3status-bar-1.log -c ~/.config/sway/py3status-bar-1.conf --debug
 }
 
 # Click to focus window
@@ -280,10 +284,10 @@ for_window [window_role="pop-up"] floating enable
 #for_window [class="^Chrome$"] move window to workspace 2
 
 # Autostart theme, compiz, clipboard manager.
-exec_always mate-settings-daemon --replace
+#exec_always mate-settings-daemon --replace
 #exec compton --vsync drm
 #exec compiz-decorator
-exec parcellite
+#exec parcellite
 #exec_always --no-startup-id rfkill unblock bluetooth
 ##exec_always /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 #exec_always  pulseaudio-equalizer disable-config
@@ -323,13 +327,13 @@ bindsym $mod+plus scratchpad show
 bindsym $mod+ctrl+plus [title="^Sup ::"] scratchpad show
 
 #exec --no-startup-id compton -bfCG --backend glx --paint-on-overlay --vsync opengl-swc -D 2 --shadow-exclude argb    # composite manager
-exec --no-startup-id numlockx
-exec --no-startup-id nitrogen --restore
+#exec --no-startup-id numlockx
+#exec --no-startup-id nitrogen --restore
 #exec skype
 #exec skypeforlinux
 #exec slack
-exec --no-startup-id compton
-exec --no-startup-id mate-power-manager
+#exec --no-startup-id compton
+#exec --no-startup-id mate-power-manager
 #exec --no-startup-id ferdi
 #exec --no-startup-id signal
 
@@ -337,7 +341,7 @@ exec --no-startup-id mate-power-manager
 bindsym $mod+Tab workspace next
 bindsym $mod+Shift+Tab workspace prev
 
-set $volumepath ~/i3-volume
+#set $volumepath ~/i3-volume
 #bindsym XF86AudioRaiseVolume  exec "amixer -q sset Master 5%+ unmute; py3-cmd refresh 'volume_status'"
 #bindsym XF86AudioLowerVolume  exec "amixer -q sset Master 5%- unmute; py3-cmd refresh 'volume_status'"
 #bindsym XF86AudioMute         exec "amixer -q sset Master toggle; py3-cmd refresh 'volume_status'"
@@ -350,19 +354,19 @@ set $volumepath ~/i3-volume
 ## Volume control
 
 # Path to volume control, without trailing slash
-set $volumepath ~/i3-volume
+#set $volumepath ~/i3-volume
 
 # Command for the status line
 #   ie: i3blocks, i3status
-set $statuscmd i3status
+#set $statuscmd i3status
 
 # Signal used to update the status line
 #   i3blocks uses SIGRTMIN+10 by default
 #   i3status uses SIGUSR1 by default
-set $statussig SIGUSR1
+#set $statussig SIGUSR1
 
 # Amount to increase/decrease volume as a percentage
-set $volumestep 5
+#set $volumestep 5
 
 # alsa-utils settings
 #
@@ -374,11 +378,11 @@ set $volumestep 5
 #set $alsacard 1
 
 # append "-c $alsacard" without quotes to override default card
-bindsym $mod+Alt+Left exec notify-send "foo"
+#bindsym $mod+Alt+Left exec notify-send "foo"
 #bindsym +$mod+Alt+Up exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig up $volumestep
 
-bindsym XF86AudioLowerVolume exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig down $volumestep
-bindsym XF86AudioMute        exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig mute
+#bindsym XF86AudioLowerVolume exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig down $volumestep
+#bindsym XF86AudioMute        exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig mute
 bindsym $mod+I exec --no-startup-id rofi -show emoji -modi emoji
 bindsym $mod+n exec --no-startup-id rofi-433
 

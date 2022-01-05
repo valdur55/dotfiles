@@ -117,13 +117,13 @@ set $rigth-screen DVI-I-1-1
 
 workspace 1  output $laptop-screen
 
-workspace 2  output $center-screen $laptop-screen
-workspace 3  output $center-screen $laptop-screen
-workspace 4  output $center-screen $laptop-screen
-workspace 5  output $center-screen $laptop-screen
-workspace 6  output $center-screen $laptop-screen
-workspace 7  output $center-screen $laptop-screen
+workspace 2  output $center-screen $rigth-screen $laptop-screen
+workspace 3  output $center-screen $rigth-screen $laptop-screen
+workspace 4  output $center-screen $rigth-screen $laptop-screen
+workspace 5  output $center-screen $rigth-screen $laptop-screen
+workspace 6  output $center-screen $rigth-screen $laptop-screen
 
+workspace 7  output $rigth-screen $center-screen $laptop-screen
 workspace 8  output $rigth-screen $center-screen $laptop-screen
 workspace 9  output $rigth-screen $center-screen $laptop-screen
 workspace 10 output $rigth-screen $center-screen $laptop-screen
@@ -220,12 +220,12 @@ bar {
      tray_output none
      output $center-screen
      #ajutiselt testimine
-#     output $laptop-screen
+     output $laptop-screen
      id bar-1
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/i3/py3status-bar-1.conf --debug
+     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/i3/py3status-bar-1.conf -d
 }
 
 # Click to focus window
@@ -363,8 +363,8 @@ set $volumestep 5
 #set $alsacard 1
 
 # append "-c $alsacard" without quotes to override default card
-bindsym $mod+Alt+Left exec notify-send "foo"
-bindsym Ctlr+$mod+Alt+Up exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig up $volumestep
+#bindsym $mod+Alt+Left exec notify-send "foo"
+#bindsym Ctlr+$mod+Alt+Up exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig up $volumestep
 
 bindsym XF86AudioLowerVolume exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig down $volumestep
 bindsym XF86AudioMute        exec --no-startup-id $volumepath/volume -an -t $statuscmd -u $statussig mute
