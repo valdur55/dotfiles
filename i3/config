@@ -210,7 +210,7 @@ bar {
         position top
 #        status_command py3status
 #        status_command py3status -l ~/py3status.log --debug
-        status_command py3status -l ~/py3status.log -dbus-notify
+        status_command py3status -l ~/py3status.log -dbus-notify -c ~/.config/py3status/top-bar.conf -i ~/.config/py3status/user-modules/
 #        status_command py3status
 #        status_command i3blocks -c ~/.i3/i3blocks.conf
 }
@@ -225,7 +225,7 @@ bar {
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/i3/py3status-bar-1.conf -d -dbus-notify
+     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/py3status/debug-bar.conf -d -dbus-notify -i ~/.config/py3status/user-modules/
 }
 
 # Click to focus window
