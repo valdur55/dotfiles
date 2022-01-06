@@ -196,23 +196,13 @@ bindsym $mod+r mode "resize"
 # Start i3bar to display a workspace bar (plus the system information i3status
 # finds out, if available)
 bar {
-       id bar-0
+       id bar-top
        tray_output primary
-#       output $left-screen
-#      font pango: Hack 10,Symbola 10
-#       font pango: Hack 10
-#       font pango: Hack 10, Segoe UI Emoji 10
-#         font -misc-fixed-medium-r-normal--13-120-75-75-C-70-iso10646-1, Symbola 10, IconicIcons 10
-#         font pango:Segoe UI Emoji 10
-#         font pango:Source Sans Pro, IconicIcons 10
-        font pango:Ubuntu 10
+#       font pango:Source Sans Pro, IconicIcons 10
+       font pango:Ubuntu 10
 #        font Segoe UI Emoji
         position top
-#        status_command py3status
-#        status_command py3status -l ~/py3status.log --debug
-        status_command py3status -l ~/py3status.log -dbus-notify -c ~/.config/py3status/top-bar.conf -i ~/.config/py3status/user-modules/
-#        status_command py3status
-#        status_command i3blocks -c ~/.i3/i3blocks.conf
+        status_command py3status -dbus-notify -c ~/.config/py3status/top-bar.conf -i ~/.config/py3status/user-modules/ -l ~/py3status-top-bar.log 
 }
 
 
@@ -221,11 +211,11 @@ bar {
      output $center-screen
      #ajutiselt testimine
      output $laptop-screen
-     id bar-1
+     id bar-debug
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-     status_command py3status -l ~/py3status-bar-1.log -c ~/.config/py3status/debug-bar.conf -d -dbus-notify -i ~/.config/py3status/user-modules/
+     status_command py3status -l ~/py3status-debug-bar.log -c ~/.config/py3status/debug-bar.conf -d -dbus-notify -i ~/.config/py3status/user-modules/
 }
 
 # Click to focus window
