@@ -1,1 +1,0 @@
-../../i3/py3status/idea_debug.py
