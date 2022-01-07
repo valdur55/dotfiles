@@ -165,7 +165,7 @@ bindsym $mod+Shift+r exec 'killall py3status ; restart'
 
 # exit i3 (logs you out of your X session)
 bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -b 'Yes, exit i3' 'i3-msg exit'"
-#bindsym Mod1+Tab exec "echo"
+
 
 # resize window (you can also use the mouse for that)
 mode "resize" {
@@ -235,24 +235,27 @@ bindsym $mod+Control+l move workspace to output right
 for_window [all] title_window_icon on
 new_window 1pixel
 new_float 1pixel
+
 # Google chrome and vlc will be without borders.
 for_window [class="^Chrome$" title=" - Chromium$"] border none   move window to workspace 2
 for_window [class="^vlc$" title=" - vlc$"] border none
-#for_window [title="TeamViewer"] floating enable
 
+
+#TTeamviewer
 for_window [class="^TeamViewer.exe$"] floating enable
-#for_window [title="^TeamViewer$"] floating enable
 for_window [title="^Computers & Contacts$"] floating enable
 for_window [title="- TeamViewer -"] floating enable
+#for_window [title="TeamViewer Panel (minimized)"] floating enable, move absolute position 900 px 0 px
+#for_window [title="TeamViewer Panel"] floating enable, move absolute position 900 px 0 px
+#for_window [title="TeamViewer"] floating enable, move absolute position 0 px 0 px
+
 for_window [title="Turvaseadmesse sisselogimine"] floating enable
 for_window [title="Sertifikaadi valik"] floating enable
 for_window [title="chrome-token-signing"] floating enable
 
 for_window [window_role="pop-up"] floating enable
 for_window [window_role="task_dialog"] floating enable
-#for_window [title="TeamViewer Panel (minimized)"] floating enable, move absolute position 900 px 0 px
-#for_window [title="TeamViewer Panel"] floating enable, move absolute position 900 px 0 px
-#for_window [title="TeamViewer"] floating enable, move absolute position 0 px 0 px
+
 # browser pop-ups
 for_window [window_role="pop-up"] floating enable
 
@@ -263,10 +266,13 @@ exec_always mate-settings-daemon --replace
 #exec compton --vsync drm
 #exec compiz-decorator
 exec parcellite
-exec_always --no-startup-id rfkill unblock bluetooth
-exec_always /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
+#exec_always --no-startup-id rfkill unblock bluetooth
+
+
+#exec_always /usr/lib/x86_64-linux-gnu/polkit-mate/polkit-mate-authentication-agent-1
+
 #exec_always  pulseaudio-equalizer disable-config
-exec_always pulseeffects -l ss
+#exec_always pulseeffects -l ss
 #exec-always pulseaudio-equalizer enable-config
 #exec_always pulseaudio-equalizer enable
 #exec pulseaudio-equalizer enable-config
@@ -307,7 +313,9 @@ exec --no-startup-id nitrogen --restore
 #exec skype
 #exec skypeforlinux
 #exec slack
-exec --no-startup-id compton --glx-use-copysubbuffermesa --glx-no-rebind-pixmap
+
+exec --no-startup-id compton --backend glx
+
 exec --no-startup-id mate-power-manager
 #exec --no-startup-id ferdi
 #exec --no-startup-id signal
