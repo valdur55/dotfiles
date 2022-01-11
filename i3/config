@@ -192,7 +192,7 @@ bar {
        font pango:Ubuntu 10
 #        font Segoe UI Emoji
         position top
-        status_command py3status --dbus-notify -i ~/.config/py3status/user-modules/ -l ~/py3status-top-bar.log -c ~/.config/py3status/top-bar.conf 
+        status_command py3status --dbus-notify -i ~/.config/py3status/user-modules/ -l ~/py3status-top-bar.log -c ~/.config/py3status/top-bar.conf
 }
 
 
