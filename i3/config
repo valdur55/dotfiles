@@ -296,14 +296,14 @@ bindsym $mod+plus scratchpad show
 
 bindsym $mod+ctrl+plus [title="^Sup ::"] scratchpad show
 
-#exec --no-startup-id compton -bfCG --backend glx --paint-on-overlay --vsync opengl-swc -D 2 --shadow-exclude argb    # composite manager
+exec --no-startup-id compton -bfCG --backend glx --paint-on-overlay --vsync opengl-swc -D 2 --shadow-exclude argb    # composite manager
 exec --no-startup-id numlockx
 exec --no-startup-id nitrogen --restore
 #exec skype
 #exec skypeforlinux
 #exec slack
 
-exec --no-startup-id compton --backend glx
+#exec --no-startup-id compton --backend glx
 
 exec --no-startup-id mate-power-manager
 #exec --no-startup-id ferdi
