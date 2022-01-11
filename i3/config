@@ -206,7 +206,7 @@ bar {
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-     status_command py3status -l ~/py3status-debug-bar.log -c ~/.config/py3status/debug-bar.conf -d --dbus-notify -i ~/.config/py3status/user-modules/
+     status_command py3status -s -l ~/py3status-debug-bar.log -c ~/.config/py3status/debug-bar.conf -d --dbus-notify -i ~/.config/py3status/user-modules/
 }
 
 # Click to focus window
