@@ -385,5 +385,5 @@ bindsym $mod+n exec --no-startup-id rofi-433
 
 
 #### SWAY
-output * bg /usr/local/share/backgrounds/sway/Sway_Wallpaper_Blue_1920x1080.png fill
+output * bg /usr/share/backgrounds/sway/Sway_Wallpaper_Blue_2048x1536.png fill
 
