@@ -212,7 +212,7 @@ bindsym $mod+r mode "resize"
 # Start i3bar to display a workspace bar (plus the system information i3status
 # finds out, if available)
 bar {
-       id bar-0
+       id bar-top
        tray_output *
 #      font pango: Hack 10,Symbola 10
 #       font pango: Hack 10
@@ -223,11 +223,7 @@ bar {
         font pango:Ubuntu 10
 #        font Segoe UI Emoji
         position top
-#        status_command py3status --wm=sway
-#        status_command py3status -l ~/py3status.log --debug --wm=sway
-#        status_command py3status -l ~/py3status.log --wm=sway
-#        status_command py3status --wm=sway
-#        status_command i3blocks -c ~/.i3/i3blocks.conf
+        status_command py3status --wm=sway --dbus-notify -i ~/.config/py3status/bar-top-user-modules -l ~/py3status-top-bar.log -c ~/.config/py3status/top-bar.conf
 }
 
 
