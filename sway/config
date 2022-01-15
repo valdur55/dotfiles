@@ -382,6 +382,7 @@ bindsym $mod+Shift+Tab workspace prev
 bindsym $mod+I exec --no-startup-id rofi -show emoji -modi emoji
 bindsym $mod+n exec --no-startup-id rofi-433
 
+bindsym $mod+o exec exec j4-dmenu-desktop --no-generic --dmenu=bemenu
 
 
 #### SWAY
