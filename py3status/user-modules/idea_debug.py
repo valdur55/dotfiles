@@ -10,7 +10,7 @@ import pydevd
 
 def connect_to_pycharm():
     try:
-        pydevd.settrace('localhost', port=6767, stdoutToServer=False, stderrToServer=False, suspend=False)
+        pydevd.settrace('localhost', port=6767, stdoutToServer=True, stderrToServer=True, suspend=False)
         return "🐛"
     except Exception:
         return "🍀"
