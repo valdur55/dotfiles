@@ -223,7 +223,7 @@ bar {
         font pango:Ubuntu 10
 #        font Segoe UI Emoji
         position top
-        status_command py3status --wm=sway --dbus-notify -i ~/.config/py3status/bar-top-user-modules -l ~/py3status-top-bar.log -c ~/.config/py3status/top-bar.conf
+        status_command py3status --wm=sway --dbus-notify -i ~/.config/py3status/bar-top-user-modules -l ~/py3status-top-bar.log -c ~/.config/py3status/bar-top.conf
 }
 
 
@@ -236,7 +236,7 @@ bar {
      font pango:Ubuntu 10
      position bottom
      workspace_buttons no
-    status_command py3status --wm=sway -s -l ~/py3status-debug-bar.log -c ~/.config/py3status/debug-bar.conf -d --dbus-notify -i ~/.config/py3status/user-modules/
+    status_command py3status --wm=sway -s -l ~/py3status-bar-debug.log -c ~/.config/py3status/bar-debug.conf -d --dbus-notify -i ~/.config/py3status/bar-debug-user-modules/
 }
 
 # Click to focus window
