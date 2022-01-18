@@ -9,22 +9,27 @@ SAMPLE OUTPUT
 """
 import pydevd
 
-def connect_to_pydevd():
+DEFAULT_PORT = 6767
+
+def _connect_to_pydevd(port):
     try:
-        pydevd.settrace('localhost', port=9999, stdoutToServer=True, stderrToServer=True, suspend=False)
+        pydevd.settrace('localhost', port=port, stdoutToServer=True, stderrToServer=True, suspend=False)
         return "🐛"
     except Exception:
         return "🍀"
 
-init_result = "F"
+init_result = "🍀"
+# Useful when you wan to hae import time hook
+#init_result = _connect_to_pydevd(DEFAULT_PORT)
 
 class Py3status:
     """
     """
+    port = 6767
     _connection_result = init_result
 
     def _connect_to_pydevd(self):
-        self._connection_result = connect_to_pydevd()
+        self._connection_result = _connect_to_pydevd(self.port)
 
     def post_config_hook(self):
         self._connect_to_pydevd()
