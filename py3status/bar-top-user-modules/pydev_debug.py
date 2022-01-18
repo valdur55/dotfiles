@@ -16,19 +16,18 @@ def connect_to_pydevd():
     except Exception:
         return "🍀"
 
-init_result = connect_to_pydevd()
+init_result = "F"
 
 class Py3status:
     """
     """
-    some_config_val = None
     _connection_result = init_result
-
-    def _post_config_hoop(self):
-        pass
 
     def _connect_to_pydevd(self):
         self._connection_result = connect_to_pydevd()
+
+    def post_config_hook(self):
+        self._connect_to_pydevd()
 
     def pydev_debug(self):
         return {
