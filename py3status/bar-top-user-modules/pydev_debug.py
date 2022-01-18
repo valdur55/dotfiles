@@ -11,7 +11,7 @@ import pydevd
 
 def connect_to_pydevd():
     try:
-        pydevd.settrace('localhost', port=6767, stdoutToServer=True, stderrToServer=True, suspend=False)
+        pydevd.settrace('localhost', port=9999, stdoutToServer=True, stderrToServer=True, suspend=False)
         return "🐛"
     except Exception:
         return "🍀"
