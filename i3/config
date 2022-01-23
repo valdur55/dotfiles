@@ -222,7 +222,7 @@ bindsym $mod+Control+k move workspace to output up
 bindsym $mod+Control+l move workspace to output right
 
 # Remove borders. Upper border will come when in tabbed window
-for_window [all] title_window_icon on
+for_window [class=".*"] title_window_icon on
 new_window 1pixel
 new_float 1pixel
 
