@@ -13,6 +13,7 @@ Configuration parameters:
     button_stop: mouse button to stop the player (default None)
     button_switch_to_top_player: (Experimental) mouse button to switch to toop player (default None)
     button_toggle: mouse button to toggle between play and pause mode (default 1)
+    cache_timeout: time (s) between Position update (default 0.5)
     format: see placeholders below
     format: display format for this module
         (default '[{artist} - ][{title}] {previous} {toggle} {next}')
@@ -101,25 +102,30 @@ SAMPLE OUTPUT
 from datetime import timedelta
 import time
 from dbus.mainloop.glib import DBusGMainLoop
-from gi.repository import GObject
+from gi.repository import GLib
 from threading import Thread
 import re
 import sys
 from dbus import SessionBus, DBusException
-from mpris2 import Player, MediaPlayer2, get_players_uri, Interfaces
+from mpris2 import Player as dPlayer, MediaPlayer2 as dMediaPlayer2
+from mpris2 import get_players_uri, Interfaces
 from mpris2.types import Metadata_Map
+from enum import IntEnum
 
 STRING_GEVENT = "this module does not work with gevent"
-
-WORKING_STATES = ["Playing", "Paused", "Stopped"]
 ALWAYS_CLICKABLE = "always"
 
-PLAYING = 0
-PAUSED = 1
-STOPPED = 2
+
+class STATE(IntEnum):
+    Playing = 0
+    Paused = 1
+    Stopped = 2
 
 
 def _get_time_str(microseconds):
+    if microseconds is None:
+        return None
+
     delta = timedelta(seconds=microseconds // 1_000_000)
     delta_str = str(delta).lstrip("0").lstrip(":")
     if delta_str.startswith("0"):
@@ -127,10 +133,249 @@ def _get_time_str(microseconds):
     return delta_str
 
 
+# noinspection PyProtectedMember
+class Player:
+    def __init__(self, parent, player_id, name_from_id, name_with_instance):
+        self._id = player_id
+        self.parent = parent
+        self._name_with_instance = name_with_instance
+        self._name = name_from_id
+        self._dbus = dPlayer(dbus_interface_info={"dbus_uri": player_id})
+        self._metadata = {}
+        self._can = {}
+        self._buttons = {}
+        self._state = None
+        self._player_name, self._name_index = self.parent._get_mpris_name(self)
+        self._full_name = f"{name_with_instance} {self._name_index}"
+        self._hide_non_canplay = (
+            self._name in self.parent.player_hide_non_canplay
+        )
+        self._placeholders = {
+            "player": self._player_name,
+            # for debugging ;p
+            "full_name": self._full_name,
+        }
+
+        # Init data from dbus interface
+        self.state = None
+        self.metadata = None
+        self._set_player_name_priority()
+
+        for canProperty in self.parent._used_can_properties:
+            self._can[canProperty] = getattr(self._dbus, canProperty)
+
+    @property
+    def hide(self):
+        return self._hide_non_canplay and not self._can.get("CanPlay")
+
+    @property
+    def id(self):
+        return self._id
+
+    def _set_player_name_priority(self):
+        if self.parent.player_priority:
+            try:
+                priority = self.parent.player_priority.index(self._name)
+            except ValueError:
+                try:
+                    priority = self.parent.player_priority.index("*")
+                except ValueError:
+                    priority = 0
+        else:
+            priority = 0
+
+        self._name_priority = priority
+
+    @property
+    def priority_tuple(self):
+        if self.hide:
+            return None
+
+        return self._state, self._name_priority, self._name_index, self.id
+
+
+    def set_can_property(self, key, value):
+        self._can[key] = value
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def metadata(self):
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, metadata=None):
+        if not self.parent._format_contains_metadata:
+            self._metadata = {}
+            return
+
+        if metadata is None:
+            metadata = self._dbus.Metadata
+
+        is_stream = False
+
+        try:
+            if len(metadata) > 0:
+                url = metadata.get(Metadata_Map.URL)
+                is_stream = url is not None and "file://" not in url
+                self._metadata["title"] = metadata.get(Metadata_Map.TITLE, None)
+                self._metadata["album"] = metadata.get(Metadata_Map.ALBUM, None)
+
+                artist = metadata.get(Metadata_Map.ARTIST, None)
+                if len(artist):
+                    self._metadata["artist"] = artist[0] or None
+                else:
+                    # we assume here that we playing a video and these types of
+                    # media we handle just like streams
+                    is_stream = True
+
+                length_ms = metadata.get(Metadata_Map.LENGTH)
+                if length_ms:
+                    self._metadata["length"] = _get_time_str(length_ms)
+                else:
+                    self._metadata["length"] = None
+            else:
+                # use stream format if no metadata is available
+                is_stream = True
+        except Exception:
+            self._metadata["error_occurred"] = True
+
+        if is_stream and self._metadata.get("title"):
+            # delete the file extension
+            self._metadata["title"] = re.sub(r"\....$", "", self._metadata.get("title"))
+            self._metadata["nowplaying"] = metadata.get("vlc:nowplaying", None)
+
+        if not self._metadata.get("title"):
+            self._metadata["title"] = "No Track"
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_value):
+        if new_value is None:
+            new_value = self._dbus.PlaybackStatus
+
+        if new_value != self._state:
+            self._state = getattr(STATE, new_value)
+            if self.parent._player == self:
+                self.prepare_output()
+
+    def send_mpris_action(self, index):
+        control_state = self.parent._states.get(index)
+        try:
+            if self.get_button_state(control_state):
+                getattr(self._dbus, self.parent._states[index]["action"])()
+                self.state = None
+        except DBusException as err:
+            self.parent.py3.log(
+                f"Player {self._name_with_instance} responded {str(err).split(':', 1)[-1]}"
+            )
+
+    def prepare_output(self):
+        if self.parent._format_contains_control_buttons:
+            self._set_response_buttons()
+
+    def get_button_state(self, control_state):
+        # Toggle and Stop are always clickable
+        if control_state["clickable"] == ALWAYS_CLICKABLE:
+            return True
+
+        try:
+            clickable = getattr(self._can, control_state["clickable"], True)
+        except Exception:
+            clickable = False
+
+        if self.state in control_state.get("inactive", []):
+            clickable = False
+
+        return clickable
+
+    def _set_response_buttons(self):
+        buttons = {}
+
+        for button, control_state in self.parent._states.items():
+            if self.parent.py3.format_contains(self.parent.format, button):
+                if self.get_button_state(control_state):
+                    color = self.parent._color_active
+                else:
+                    color = self.parent._color_inactive
+
+                buttons[button] = {
+                    "color": color,
+                    "full_text": control_state["icon"],
+                    "index": button,
+                }
+
+        if buttons.get("toggle"):
+            buttons["toggle"]["full_text"] = self.parent._state_icon_color_map[
+                self.state
+            ]["toggle_icon"]
+
+        self._buttons = buttons
+
+    @property
+    def data(self):
+        """
+        Output player specific data
+        """
+        if self.parent._format_contains_time:
+            try:
+                ptime = _get_time_str(self._dbus.Position)
+            except DBusException:
+                ptime = None
+
+            self._placeholders["time"] = ptime
+
+
+        return dict(self._placeholders, **self.metadata, **self._buttons)
+
+    def player_on_change(self, data):
+        is_active_player = self == self.parent._player
+        call_set_player = False
+        call_update = False
+
+        for key, new_value in data.items():
+            if key == "PlaybackStatus":
+                self.state = new_value
+                call_set_player = True
+
+            elif key == "Metadata":
+                if self.parent._format_contains_metadata:
+                    self.metadata = new_value
+                    call_update = True
+
+            elif key.startswith("Can"):
+                self.set_can_property(key, new_value)
+                call_update = True
+
+                if key == "CanPlay":
+                    call_set_player = True
+
+            elif key == "Rate":
+                if is_active_player:
+                    self.state = None
+                    call_update = True
+
+        if call_set_player:
+            return self.parent._set_player()
+
+        if is_active_player and call_update:
+            return self.parent.py3.update()
+
+    @property
+    def state_map(self):
+        return self.parent._state_icon_color_map[self.state]
+
+
 class Py3status:
     """ """
 
     # available configuration parameters
+    cache_timeout = 0.5
     button_next = None
     button_next_player = None
     button_prev_player = None
@@ -159,22 +404,42 @@ class Py3status:
         self._control_states = {}
         self._ownerToPlayerId = {}
         self._kill = False
-        self._mpris_players = {}
+        self._mpris_players: dict[Player] = {}
         self._mpris_names = {}
         self._mpris_name_index = {}
-        self._player = None
+        self._player: [Player, None] = None
         self._tries = 0
+        self._empty_response = {
+            "album": None,
+            "artist": None,
+            "length": None,
+            "title": None,
+            "nowplaying": None,
+            "time": None,
+            "state": None,
+            "player": None,
+            # for debugging ;p
+            "full_name": None,
+        }
+
         self._states = {
             "pause": {
                 "action": "Pause",
                 "clickable": "CanPause",
                 "icon": self.icon_pause,
+                "inactive": [STATE.Stopped, STATE.Paused],
             },
-            "play": {"action": "Play", "clickable": "CanPlay", "icon": self.icon_play},
+            "play": {
+                "action": "Play",
+                "clickable": "CanPlay",
+                "icon": self.icon_play,
+                "inactive": [STATE.Playing],
+            },
             "stop": {
                 "action": "Stop",
                 "clickable": ALWAYS_CLICKABLE,  # The MPRIS API lacks 'CanStop' function.
                 "icon": self.icon_stop,
+                "inactive": [STATE.Stopped],
             },
             "next": {
                 "action": "Next",
@@ -188,14 +453,39 @@ class Py3status:
             },
             "toggle": {
                 "action": "PlayPause",
-                # By mpris spec it reccommends CanPause check, but works well withoit it
+                # By mpris spec it recommends CanPause check, but works well withoit it
                 "clickable": ALWAYS_CLICKABLE,
                 "icon": None,
             },
         }
 
+        self._state_icon_color_map = {
+            STATE.Playing: {
+                "state_icon": self.state_play,
+                "color": self.py3.COLOR_PLAYING or self.py3.COLOR_GOOD,
+                "toggle_icon": self.state_pause,
+                "cached_until": self.cache_timeout,
+            },
+            STATE.Paused: {
+                "state_icon": self.state_pause,
+                "color": self.py3.COLOR_PAUSED or self.py3.COLOR_DEGRADED,
+                "toggle_icon": self.state_play,
+                "cached_until": self.py3.CACHE_FOREVER,
+            },
+            STATE.Stopped: {
+                "state_icon": self.state_stop,
+                "color": self.py3.COLOR_STOPPED or self.py3.COLOR_BAD,
+                "toggle_icon": self.state_play,
+                "cached_until": self.py3.CACHE_FOREVER,
+            },
+        }
+
+        self._color_active = self.py3.COLOR_CONTROL_ACTIVE or self.py3.COLOR_GOOD
+        self._color_inactive = self.py3.COLOR_CONTROL_INACTIVE or self.py3.COLOR_BAD
+
         self._format_contains_metadata = False
-        for key in ["album", "artist", "title", "nowplaying"]:
+        self._metadata_keys = ["album", "artist", "title", "nowplaying", "length"]
+        for key in self._metadata_keys:
             if self.py3.format_contains(self.format, key):
                 self._format_contains_metadata = True
                 break
@@ -216,131 +506,42 @@ class Py3status:
             self._used_can_properties.append("CanPlay")
 
         self._format_contains_time = self.py3.format_contains(self.format, "time")
+        self._button_cache_flush = None
+        if 2 not in [
+            self.button_next,
+            self.button_next_player,
+            self.button_prev_player,
+            self.button_previous,
+            self.button_stop,
+            self.button_switch_to_top_player,
+            self.button_toggle,
+        ]:
+            self._button_cache_flush = 2
 
+        self._accept_all_players = not self.player_priority or "*" in self.player_priority
         # start last
         self._dbus_loop = DBusGMainLoop()
         self._dbus = SessionBus(mainloop=self._dbus_loop)
         self._start_listener()
 
-    def _init_data(self):
-        self._data = {
-            "album": None,
-            "artist": None,
-            "exception": None,
-            "length": None,
-            "player": None,
-            "state": STOPPED,
-            "title": None,
-            "nowplaying": None,
-        }
+    def _get_mpris_name(self, player):
+        name = self._mpris_names.get(player.id)
+        if not name:
+            dMediaPlayer = dMediaPlayer2(dbus_interface_info={"dbus_uri": player.id})
+            name = str(dMediaPlayer.Identity)
+            self._mpris_names[player.name] = name
 
-        try:
-            self._data["player"] = self._player["player_name"]
-            self._data["state"] = self._get_state(self._player["status"])
-
-            if self._format_contains_metadata:
-                self._update_metadata(self._player["_metadata"])
-
-        except Exception as e:
-            self._data["exception"] = e
-
-    def _get_button_state(self, control_state):
-        # Toggle and Stop are always clickable
-        if control_state["clickable"] == ALWAYS_CLICKABLE:
-            return True
-
-        try:
-            clickable = self._player.get(control_state["clickable"], True)
-        except Exception:
-            clickable = False
-
-        state = self._data.get("state")
-        if control_state["action"] == "Play" and state == PLAYING:
-            clickable = False
-        elif control_state["action"] == "Pause" and state in [STOPPED, PAUSED]:
-            clickable = False
-        elif control_state["action"] == "Stop" and state == STOPPED:
-            clickable = False
-
-        return clickable
-
-    def _get_state(self, playback_status):
-        if playback_status == "Playing":
-            return PLAYING
-        elif playback_status == "Paused":
-            return PAUSED
+        index = self._mpris_name_index.get(name)
+        if index:
+            self._mpris_name_index[player.name] += 1
         else:
-            return STOPPED
+            self._mpris_name_index[player.name] = 0
 
-    def _get_text(self):
-        """
-        Get the current metadata
-        """
-        if self._data.get("state") == PLAYING:
-            color = self.py3.COLOR_PLAYING or self.py3.COLOR_GOOD
-            state_symbol = self.state_play
-        elif self._data.get("state") == PAUSED:
-            color = self.py3.COLOR_PAUSED or self.py3.COLOR_DEGRADED
-            state_symbol = self.state_pause
-        else:
-            color = self.py3.COLOR_STOPPED or self.py3.COLOR_BAD
-            state_symbol = self.state_stop
-
-        ptime = None
-        cache_until = self.py3.CACHE_FOREVER
-
-        if self._format_contains_time:
-            try:
-                ptime_ms = getattr(self._player["_dbus"], "Position", None)
-            except DBusException:
-                ptime_ms = None
-
-            if ptime_ms is not None:
-                ptime = _get_time_str(ptime_ms)
-                if self._data.get("state") == PLAYING:
-                    cache_until = time.perf_counter() + 0.5
-
-        placeholders = {
-            "player": self._data.get("player"),
-            "state": state_symbol,
-            "album": self._data.get("album"),
-            "artist": self._data.get("artist"),
-            "length": self._data.get("length"),
-            "time": ptime,
-            "title": self._data.get("title") or "No Track",
-            "nowplaying": self._data.get("nowplaying"),
-            # for debugging ;p
-            "full_name": self._player.get("full_name"),
-        }
-
-        return (placeholders, color, cache_until)
-
-    def _get_control_states(self):
-        state = "pause" if self._data.get("state") == PLAYING else "play"
-        self._states["toggle"]["icon"] = self._states[state]["icon"]
-        return self._states
-
-    def _get_response_buttons(self):
-        response = {}
-
-        for button, control_state in self._control_states.items():
-            if self.py3.format_contains(self.format, button):
-                if self._get_button_state(control_state):
-                    color = self.py3.COLOR_CONTROL_ACTIVE or self.py3.COLOR_GOOD
-                else:
-                    color = self.py3.COLOR_CONTROL_INACTIVE or self.py3.COLOR_BAD
-
-                response[button] = {
-                    "color": color,
-                    "full_text": control_state["icon"],
-                    "index": button,
-                }
-
-        return response
+        return (name, index)
 
     def _start_loop(self):
-        self._loop = GObject.MainLoop()
-        GObject.timeout_add(1000, self._timeout)
+        self._loop = GLib.MainLoop()
+        GLib.timeout_add(1000, self._timeout)
         try:
             self._loop.run()
         except KeyboardInterrupt:
@@ -366,44 +567,18 @@ class Py3status:
         user and finally by instance if a player has more than one running.
         """
         players = []
-        for name, p in self._mpris_players.items():
+        for name, player in self._mpris_players.items():
             # we set the priority here as we need to establish the player name
             # which might not be immediately available.
-            if "_priority" not in p:
-                if self.player_priority:
-                    try:
-                        priority = self.player_priority.index(p["_name"])
-                    except ValueError:
-                        try:
-                            priority = self.player_priority.index("*")
-                        except ValueError:
-                            priority = None
-                else:
-                    priority = 0
-                if priority is not None:
-                    p["_priority"] = priority
-            if p.get("_priority") is not None and not p.get("_hide"):
-                players.append((p["_state_priority"], p["_priority"], p["index"], name))
+            player_priority_tuple = player.priority_tuple
+            if player_priority_tuple:
+                players.append(player_priority_tuple)
 
         new_top_player_id = None
         if players:
             new_top_player_id = sorted(players)[0][3]
 
         self._set_data_entry_point_by_name_key(new_top_player_id, update)
-
-    def _hide_mediaplayer_by_canplay(self, player):
-        player["_hide"] = (
-            not player.get("CanPlay")
-            and player["_name"] in self.player_hide_non_canplay
-        )
-
-    def _ask_player_new_state(self, player):
-        if player:
-            return self._set_player_new_state(player, player["_dbus"].PlaybackStatus)
-
-    def _set_player_new_state(self, player, new_value):
-        player["status"] = new_value
-        player["_state_priority"] = WORKING_STATES.index(new_value)
 
     def _player_on_change(self, interface_name, data, invalidated_properties, sender):
         """
@@ -412,47 +587,12 @@ class Py3status:
         sender_player_id = self._ownerToPlayerId.get(sender)
         if not sender_player_id:
             return
-        sender_player = self._mpris_players.get(sender_player_id)
-        if not sender_player:
-            return
-        sender_is_active_player = sender_player_id == self._player.get("_id")
+        sender_player: [Player, None] = self._mpris_players.get(sender_player_id)
 
-        call_set_player = False
-        call_update = False
+        if sender_player:
+            sender_player.player_on_change(data)
 
-        for key, new_value in data.items():
-
-            if key == "PlaybackStatus":
-                self._set_player_new_state(sender_player, new_value)
-                call_set_player = True
-
-            elif key == "Metadata":
-                if self._format_contains_metadata:
-                    sender_player["_metadata"] = new_value
-                    call_update = True
-
-            elif key.startswith("Can"):
-                if key in self._used_can_properties:
-                    sender_player[key] = new_value
-                    call_update = True
-
-                    if key == "CanPlay":
-                        self._hide_mediaplayer_by_canplay(sender_player)
-                        call_set_player = True
-
-            elif key == "Rate":
-                sender_player[key] = new_value
-                if sender_is_active_player:
-                    self._ask_player_new_state(sender_player)
-                    call_update = True
-
-        if call_set_player:
-            return self._set_player()
-
-        if sender_is_active_player and call_update:
-            return self.py3.update()
-
-    def _add_player(self, player_id, owner):
+    def _add_player(self, player_id, owner=None):
         """
         Add player to mpris_players
         """
@@ -460,53 +600,20 @@ class Py3status:
         name_from_id = player_id_parts_list[3]
 
         if (
-            self.player_priority != []
+            not self._accept_all_players
             and name_from_id not in self.player_priority
-            and "*" not in self.player_priority
         ):
-            return False
+            return
 
-        dMediaPlayer = MediaPlayer2(dbus_interface_info={"dbus_uri": player_id})
-        dPlayer = Player(dbus_interface_info={"dbus_uri": player_id})
+        if not owner:
+            try:
+                owner = self._dbus.get_name_owner(player_id)
+            except DBusException:
+                return
 
-        name_with_instance = name_from_id
-        if len(player_id_parts_list) > 4:
-            name_with_instance += f".{player_id_parts_list[4]}"
+        name_with_instance = ".".join(player_id_parts_list[3:])
 
-        name = self._mpris_names.get(name_from_id)
-        if not name:
-            name = str(dMediaPlayer.Identity)
-            self._mpris_names[name_from_id] = name
-
-        if name_from_id not in self._mpris_name_index:
-            self._mpris_name_index[name_from_id] = 0
-
-        index = self._mpris_name_index[name_from_id]
-        self._mpris_name_index[name_from_id] += 1
-
-        player = {
-            "_id": player_id,
-            "_dbus": dPlayer,
-            "_state_priority": None,
-            "_metadata": None,
-            "_hide": None,
-            "_name": name_from_id,
-            "index": index,
-            "player_name": name,
-            "full_name": f"{name_with_instance} {index}",
-            "status": None,
-        }
-
-        if self._format_contains_metadata:
-            player["_metadata"] = dPlayer.Metadata
-
-        self._ask_player_new_state(player)
-
-        for canProperty in self._used_can_properties:
-            player[canProperty] = getattr(dPlayer, canProperty)
-
-        if len(self.player_hide_non_canplay):
-            self._hide_mediaplayer_by_canplay(player)
+        player = Player(self, player_id, name_from_id, name_with_instance)
 
         self._mpris_players[player_id] = player
         self._ownerToPlayerId[owner] = player_id
@@ -522,10 +629,11 @@ class Py3status:
             del self._mpris_players[player_id]
 
     def _get_players(self):
-        for player in get_players_uri():
+        players_list = "|".join(self.player_priority) if not self._accept_all_players else ''
+        for player in get_players_uri(players_list):
             try:
                 # str(player) helps avoid to use dbus.Str(*) as dict key
-                self._add_player(str(player), self._dbus.get_name_owner(player))
+                self._add_player(str(player))
             except DBusException:
                 continue
 
@@ -558,55 +666,14 @@ class Py3status:
             self._loop.quit()
             sys.exit(0)
 
-    def _update_metadata(self, metadata):
-        is_stream = False
-
-        try:
-            if len(metadata) > 0:
-                url = metadata.get(Metadata_Map.URL)
-                is_stream = url is not None and "file://" not in url
-                self._data["title"] = metadata.get(Metadata_Map.TITLE)
-                self._data["album"] = metadata.get(Metadata_Map.ALBUM)
-
-                artist = metadata.get(Metadata_Map.ARTIST)
-                if len(artist):
-                    self._data["artist"] = artist[0]
-                else:
-                    # we assume here that we playing a video and these types of
-                    # media we handle just like streams
-                    is_stream = True
-
-                length_ms = metadata.get(Metadata_Map.LENGTH)
-                if length_ms is not None:
-                    self._data["length"] = _get_time_str(length_ms)
-            else:
-                # use stream format if no metadata is available
-                is_stream = True
-        except Exception:
-            self._data["error_occurred"] = True
-
-        if is_stream and self._data.get("title"):
-            # delete the file extension
-            self._data["title"] = re.sub(r"\....$", "", self._data.get("title"))
-            self._data["nowplaying"] = metadata.get("vlc:nowplaying")
-
     def _set_data_entry_point_by_name_key(self, new_active_player_key, update=True):
-        self._player = self._mpris_players.get(new_active_player_key) or {}
+        if self._player is None or new_active_player_key != self._player.id:
+            self._player = self._mpris_players.get(new_active_player_key, None)
+            if self._player:
+                self._player.prepare_output()
 
         if update:
             self.py3.update()
-
-    def _send_mpris_action(self, index):
-        control_state = self._control_states.get(index)
-
-        try:
-            if self._player and self._get_button_state(control_state):
-                getattr(self._player["_dbus"], self._control_states[index]["action"])()
-                self._ask_player_new_state(self._player)
-        except DBusException as err:
-            self.py3.log(
-                f"Player {self._player['_name']} responded {str(err).split(':', 1)[-1]}"
-            )
 
     def kill(self):
         self._kill = True
@@ -618,25 +685,26 @@ class Py3status:
         if self._kill:
             raise KeyboardInterrupt
 
-        current_player_id = self._player.get("_id")
+        current_player = self._player
         cached_until = self.py3.CACHE_FOREVER
         color = self.py3.COLOR_BAD
 
-        if self._player:
-            self._init_data()
-            if not self._data.get(
-                "exception"
-            ) and current_player_id == self._player.get("_id"):
-                (text, color, cached_until) = self._get_text()
-                self._control_states = self._get_control_states()
-                if self._format_contains_control_buttons:
-                    buttons = self._get_response_buttons()
-                else:
-                    buttons = {}
+        if current_player:
+            current_player_id = str(current_player.id)
+            current_state_map = current_player.state_map
+            data = current_player.data
 
-                composite = self.py3.safe_format(self.format, dict(text, **buttons))
+            if current_player_id == self._player.id:
+                if self._format_contains_time:
+                    cached_until = self.py3.time_in(current_state_map.get("cached_until"))
+
+                placeholders = {"state": current_state_map["state_icon"]}
+                color = current_state_map["color"]
+                composite = self.py3.safe_format(
+                    self.format, dict(self._empty_response, **placeholders, **data)
+                )
             else:
-                # Something went wrong or the player changed during our processing
+                # The player changed during our processing
                 # This is usually due to something like a player being killed
                 # whilst we are checking its details
                 # Retry but limit the number of attempts
@@ -658,22 +726,17 @@ class Py3status:
                 }
 
         else:
-            composite = [{"full_text": self.format_none, "color": self.py3.COLOR_BAD}]
-            self._data = {}
-            self._control_states = {}
+            composite = [{"full_text": self.format_none, "color": color}]
 
         # we are outputting so reset tries
         self._tries = 0
-        if self._data.get("exception"):
-            self.py3.log(self._data.get("exception"))
-            self.py3.error(str(self._data.get("exception")), 10)
-        else:
-            response = {
-                "cached_until": cached_until,
-                "color": color,
-                "composite": composite,
-            }
-            return response
+
+        response = {
+            "cached_until": cached_until,
+            "color": color,
+            "composite": composite,
+        }
+        return response
 
     def on_click(self, event):
         """
@@ -682,15 +745,22 @@ class Py3status:
         index = event["index"]
         button = event["button"]
 
-        if index not in self._control_states:
+        if not self._player:
+            return
+
+        if button == self._button_cache_flush:
+            self._player.metadata = None
+            self._player.state = None
+
+        elif index not in self._states:
             if button == self.button_toggle:
-                return self._send_mpris_action("toggle")
+                return self._player.send_mpris_action("toggle")
             elif button == self.button_stop:
-                return self._send_mpris_action("stop")
+                return self._player.send_mpris_action("stop")
             elif button == self.button_next:
-                return self._send_mpris_action("next")
+                return self._player.send_mpris_action("next")
             elif button == self.button_previous:
-                return self._send_mpris_action("previous")
+                return self._player.send_mpris_action("previous")
             elif button == self.button_switch_to_top_player:
                 return self._set_player(update=False)
 
@@ -698,21 +768,15 @@ class Py3status:
                 switchable_players = []
                 order_asc = button == self.button_next_player
                 current_player_index = False
-                for player in self._mpris_players.keys():
-                    if (
-                        self._mpris_players[player]["status"]
-                        == self._player.get("status")
-                        and not self._mpris_players[player]["_hide"]
-                    ):
+                for key, player in self._mpris_players.items():
+                    if player.state == self._player.state and not player.hide:
                         if not current_player_index:
-                            if self._mpris_players[player]["_id"] == self._player.get(
-                                "_id"
-                            ):
+                            if player.id == self._player.id:
                                 current_player_index = len(switchable_players)
                                 if order_asc:
                                     continue
 
-                        switchable_players.append(player)
+                        switchable_players.append(key)
                         if current_player_index:
                             if order_asc:
                                 break
@@ -740,7 +804,7 @@ class Py3status:
                 return
 
         elif button == 1:
-            self._send_mpris_action(index)
+            self._player.send_mpris_action(index)
 
 
 if __name__ == "__main__":
@@ -748,5 +812,5 @@ if __name__ == "__main__":
     Run module in test mode.
     """
     from py3status.module_test import module_test
-
-    module_test(Py3status)
+    format = "{toggle} {state} {player} {previous} {next} {pause} {play} {stop} {length}"
+    module_test(Py3status, {"format": format})
