@@ -23,7 +23,7 @@ Configuration parameters:
     icon_play: specify icon for play button (default u'\u25b7')
     icon_previous: specify icon for previous button (default u'\u25c3')
     icon_stop: specify icon for stop button (default u'\u25a1')
-    player_hide_non_canplay: Used to hide chrome/chomium players on idle state. (default ['chrome', 'chromium'])
+    player_hide_non_canplay: Experimental. Used to hide chrome/chromium players on idle state. Add 'chromium' into list and try. (default [])
     player_priority: priority of the players.
         Keep in mind that the state has a higher priority than
         player_priority. So when player_priority is "[mpd, bomi]" and mpd is
@@ -100,7 +100,6 @@ SAMPLE OUTPUT
 ]
 """
 from datetime import timedelta
-import time
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 from threading import Thread
@@ -113,7 +112,6 @@ from mpris2.types import Metadata_Map
 from enum import IntEnum
 
 STRING_GEVENT = "this module does not work with gevent"
-ALWAYS_CLICKABLE = "always"
 
 
 class STATE(IntEnum):
@@ -122,34 +120,34 @@ class STATE(IntEnum):
     Stopped = 2
 
 
-def _get_time_str(microseconds):
-    if microseconds is None:
-        return None
-
-    delta = timedelta(seconds=microseconds // 1_000_000)
-    delta_str = str(delta).lstrip("0").lstrip(":")
-    if delta_str.startswith("0"):
-        delta_str = delta_str[1:]
-    return delta_str
-
-
 # noinspection PyProtectedMember
 class Player:
-    def __init__(self, parent, player_id, name_from_id, name_with_instance):
+    def __init__(
+        self,
+        parent,
+        player_id,
+        name_from_id,
+        name_with_instance,
+        name_priority,
+        identity,
+        identity_index,
+    ):
         self._id = player_id
         self.parent = parent
         self._name_with_instance = name_with_instance
-        self._name = name_from_id
-        self._dbus = dPlayer(dbus_interface_info={"dbus_uri": player_id})
+        self._player_name = identity
+        self._identity_index = identity_index
+        self._name_priority = name_priority
         self._metadata = {}
         self._can = {}
         self._buttons = {}
+        self._properties_changed_match = None
         self._state = None
-        self._player_name, self._name_index = self.parent._get_mpris_name(self)
-        self._full_name = f"{name_with_instance} {self._name_index}"
-        self._hide_non_canplay = (
-            self._name in self.parent.player_hide_non_canplay
-        )
+        self._name = name_from_id
+        self._dPlayer = dPlayer(dbus_interface_info={"dbus_uri": player_id})
+        self._full_name = f"{self._player_name} {self._identity_index}"
+        self._hide_non_canplay = self._name in self.parent.player_hide_non_canplay
+
         self._placeholders = {
             "player": self._player_name,
             # for debugging ;p
@@ -159,140 +157,33 @@ class Player:
         # Init data from dbus interface
         self.state = None
         self.metadata = None
-        self._set_player_name_priority()
 
         for canProperty in self.parent._used_can_properties:
-            self._can[canProperty] = getattr(self._dbus, canProperty)
+            self._set_can_property(canProperty, getattr(self._dPlayer, canProperty))
 
-    @property
-    def hide(self):
-        return self._hide_non_canplay and not self._can.get("CanPlay")
+        # Workaround for bug which prevents to use self._dPlayer.propertiesChanged = handler.
+        self._properties_changed_match = self.parent._dbus.add_signal_receiver(
+            self._player_on_change,
+            dbus_interface=Interfaces.PROPERTIES,
+            path=Interfaces.OBJECT_PATH,
+            signal_name=Interfaces.SIGNAL,
+            bus_name=player_id,
+        )
 
-    @property
-    def id(self):
-        return self._id
+    def __del__(self):
+        if self._properties_changed_match:
+            self.parent._dbus._clean_up_signal_match(self._properties_changed_match)
 
-    def _set_player_name_priority(self):
-        if self.parent.player_priority:
-            try:
-                priority = self.parent.player_priority.index(self._name)
-            except ValueError:
-                try:
-                    priority = self.parent.player_priority.index("*")
-                except ValueError:
-                    priority = 0
-        else:
-            priority = 0
-
-        self._name_priority = priority
-
-    @property
-    def priority_tuple(self):
-        if self.hide:
+    @staticmethod
+    def _get_time_str(microseconds):
+        if microseconds is None:
             return None
 
-        return self._state, self._name_priority, self._name_index, self.id
-
-
-    def set_can_property(self, key, value):
-        self._can[key] = value
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def metadata(self):
-        return self._metadata
-
-    @metadata.setter
-    def metadata(self, metadata=None):
-        if not self.parent._format_contains_metadata:
-            self._metadata = {}
-            return
-
-        if metadata is None:
-            metadata = self._dbus.Metadata
-
-        is_stream = False
-
-        try:
-            if len(metadata) > 0:
-                url = metadata.get(Metadata_Map.URL)
-                is_stream = url is not None and "file://" not in url
-                self._metadata["title"] = metadata.get(Metadata_Map.TITLE, None)
-                self._metadata["album"] = metadata.get(Metadata_Map.ALBUM, None)
-
-                artist = metadata.get(Metadata_Map.ARTIST, None)
-                if len(artist):
-                    self._metadata["artist"] = artist[0] or None
-                else:
-                    # we assume here that we playing a video and these types of
-                    # media we handle just like streams
-                    is_stream = True
-
-                length_ms = metadata.get(Metadata_Map.LENGTH)
-                if length_ms:
-                    self._metadata["length"] = _get_time_str(length_ms)
-                else:
-                    self._metadata["length"] = None
-            else:
-                # use stream format if no metadata is available
-                is_stream = True
-        except Exception:
-            self._metadata["error_occurred"] = True
-
-        if is_stream and self._metadata.get("title"):
-            # delete the file extension
-            self._metadata["title"] = re.sub(r"\....$", "", self._metadata.get("title"))
-            self._metadata["nowplaying"] = metadata.get("vlc:nowplaying", None)
-
-        if not self._metadata.get("title"):
-            self._metadata["title"] = "No Track"
-
-    @property
-    def state(self):
-        return self._state
-
-    @state.setter
-    def state(self, new_value):
-        if new_value is None:
-            new_value = self._dbus.PlaybackStatus
-
-        if new_value != self._state:
-            self._state = getattr(STATE, new_value)
-            if self.parent._player == self:
-                self.prepare_output()
-
-    def send_mpris_action(self, index):
-        control_state = self.parent._states.get(index)
-        try:
-            if self.get_button_state(control_state):
-                getattr(self._dbus, self.parent._states[index]["action"])()
-                self.state = None
-        except DBusException as err:
-            self.parent.py3.log(
-                f"Player {self._name_with_instance} responded {str(err).split(':', 1)[-1]}"
-            )
-
-    def prepare_output(self):
-        if self.parent._format_contains_control_buttons:
-            self._set_response_buttons()
-
-    def get_button_state(self, control_state):
-        # Toggle and Stop are always clickable
-        if control_state["clickable"] == ALWAYS_CLICKABLE:
-            return True
-
-        try:
-            clickable = getattr(self._can, control_state["clickable"], True)
-        except Exception:
-            clickable = False
-
-        if self.state in control_state.get("inactive", []):
-            clickable = False
-
-        return clickable
+        delta = timedelta(seconds=microseconds // 1_000_000)
+        delta_str = str(delta).lstrip("0").lstrip(":")
+        if delta_str.startswith("0"):
+            delta_str = delta_str[1:]
+        return delta_str
 
     def _set_response_buttons(self):
         buttons = {}
@@ -317,24 +208,11 @@ class Player:
 
         self._buttons = buttons
 
-    @property
-    def data(self):
-        """
-        Output player specific data
-        """
-        if self.parent._format_contains_time:
-            try:
-                ptime = _get_time_str(self._dbus.Position)
-            except DBusException:
-                ptime = None
+    def _set_can_property(self, key, value):
+        self._can[key] = value
 
-            self._placeholders["time"] = ptime
-
-
-        return dict(self._placeholders, **self.metadata, **self._buttons)
-
-    def player_on_change(self, data):
-        is_active_player = self == self.parent._player
+    def _player_on_change(self, interface_name, data, invalidated_properties):
+        is_active_player = self is self.parent._player
         call_set_player = False
         call_update = False
 
@@ -349,7 +227,7 @@ class Player:
                     call_update = True
 
             elif key.startswith("Can"):
-                self.set_can_property(key, new_value)
+                self._set_can_property(key, new_value)
                 call_update = True
 
                 if key == "CanPlay":
@@ -367,15 +245,122 @@ class Player:
             return self.parent.py3.update()
 
     @property
+    def metadata(self):
+        return self._metadata
+
+    @metadata.setter
+    def metadata(self, metadata=None):
+        if not self.parent._format_contains_metadata:
+            return
+
+        if metadata is None:
+            metadata = self._dPlayer.Metadata
+
+        self._metadata = {}
+
+        if metadata:
+            url = metadata.get(Metadata_Map.URL)
+            is_stream = url is not None and "file://" not in url
+            if is_stream:
+                self._metadata["title"] = re.sub(
+                    r"\....$", "", metadata.get(Metadata_Map.TITLE, "")
+                )
+            else:
+                self._metadata["title"] = metadata.get(Metadata_Map.TITLE, None)
+            self._metadata["album"] = metadata.get(Metadata_Map.ALBUM, None)
+
+            artist = metadata.get(Metadata_Map.ARTIST, None)
+            if artist:
+                self._metadata["artist"] = artist[0]
+
+            self._metadata["length"] = self._get_time_str(
+                metadata.get(Metadata_Map.LENGTH)
+            )
+
+            self._metadata["nowplaying"] = metadata.get("vlc:nowplaying", None)
+
+        if not self._metadata.get("title"):
+            self._metadata["title"] = "No Track"
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_value):
+        if new_value is None:
+            new_value = self._dPlayer.PlaybackStatus
+
+        if new_value != self._state:
+            self._state = getattr(STATE, new_value)
+            if self is self.parent._player:
+                self.prepare_output()
+
+    def send_mpris_action(self, index):
+        control_state = self.parent._states.get(index)
+        try:
+            if self.get_button_state(control_state):
+                getattr(self._dPlayer, self.parent._states[index]["action"])()
+                self.state = None
+        except DBusException as err:
+            self.parent.py3.log(
+                f"Player {self._name_with_instance} responded {str(err).split(':', 1)[-1]}"
+            )
+
+    def prepare_output(self):
+        if self.parent._format_contains_control_buttons:
+            self._set_response_buttons()
+
+    def get_button_state(self, control_state):
+        try:
+            clickable = self._can.get(control_state["clickable"], True)
+        except Exception:
+            clickable = False
+
+        if self.state in control_state.get("inactive", []):
+            clickable = False
+
+        return clickable
+
+    @property
     def state_map(self):
         return self.parent._state_icon_color_map[self.state]
+
+    @property
+    def data(self):
+        """
+        Output player specific data
+        """
+        if self.parent._format_contains_time:
+            try:
+                ptime = self._get_time_str(self._dPlayer.Position)
+            except DBusException:
+                ptime = None
+
+            self._placeholders["time"] = ptime
+
+        return dict(self._placeholders, **self.metadata, **self._buttons)
+
+    @property
+    def hide(self):
+        return self._hide_non_canplay and not self._can.get("CanPlay")
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def priority_tuple(self):
+        if self.hide:
+            return None
+
+        return self._state, self._name_priority, self._identity_index, self.id
 
 
 class Py3status:
     """ """
 
     # available configuration parameters
-    cache_timeout = 0.5
     button_next = None
     button_next_player = None
     button_prev_player = None
@@ -383,6 +368,7 @@ class Py3status:
     button_stop = None
     button_switch_to_top_player = None
     button_toggle = 1
+    cache_timeout = 0.5
     format = "[{artist} - ][{title}] {previous} {toggle} {next}"
     format_none = "no player running"
     icon_next = "\u25b9"
@@ -390,23 +376,21 @@ class Py3status:
     icon_play = "\u25b7"
     icon_previous = "\u25c3"
     icon_stop = "\u25a1"
-    player_hide_non_canplay = ["chrome", "chromium"]
+    player_hide_non_canplay = []
     player_priority = []
     state_pause = "\u25eb"
     state_play = "\u25b7"
     state_stop = "\u25a1"
 
     def post_config_hook(self):
-        # TODO: Look again if it is needed
         if self.py3.is_gevent():
             raise Exception(STRING_GEVENT)
-        self._data = {}
-        self._control_states = {}
-        self._ownerToPlayerId = {}
+        self._name_owner_change_match = None
         self._kill = False
         self._mpris_players: dict[Player] = {}
-        self._mpris_names = {}
-        self._mpris_name_index = {}
+        self._identity_cache = {}
+        self._identity_index = {}
+        self._priority_cache = {}
         self._player: [Player, None] = None
         self._tries = 0
         self._empty_response = {
@@ -437,7 +421,7 @@ class Py3status:
             },
             "stop": {
                 "action": "Stop",
-                "clickable": ALWAYS_CLICKABLE,  # The MPRIS API lacks 'CanStop' function.
+                "clickable": "CanControl",
                 "icon": self.icon_stop,
                 "inactive": [STATE.Stopped],
             },
@@ -453,8 +437,8 @@ class Py3status:
             },
             "toggle": {
                 "action": "PlayPause",
-                # By mpris spec it recommends CanPause check, but works well withoit it
-                "clickable": ALWAYS_CLICKABLE,
+                "clickable": "CanPause",
+                # Not used, but it will be set dynamically with player state map.
                 "icon": None,
             },
         }
@@ -493,9 +477,7 @@ class Py3status:
         self._format_contains_control_buttons = False
         self._used_can_properties = []
         for key, value in self._states.items():
-            if value["clickable"] != ALWAYS_CLICKABLE and self.py3.format_contains(
-                self.format, key
-            ):
+            if self.py3.format_contains(self.format, key):
                 self._format_contains_control_buttons = True
                 self._used_can_properties.append(value["clickable"])
 
@@ -518,26 +500,18 @@ class Py3status:
         ]:
             self._button_cache_flush = 2
 
-        self._accept_all_players = not self.player_priority or "*" in self.player_priority
+        if self.player_priority:
+            try:
+                self._random_player_priority = self.player_priority.index("*")
+            except ValueError:
+                self._random_player_priority = False
+        else:
+            self._random_player_priority = 0
+
         # start last
         self._dbus_loop = DBusGMainLoop()
         self._dbus = SessionBus(mainloop=self._dbus_loop)
         self._start_listener()
-
-    def _get_mpris_name(self, player):
-        name = self._mpris_names.get(player.id)
-        if not name:
-            dMediaPlayer = dMediaPlayer2(dbus_interface_info={"dbus_uri": player.id})
-            name = str(dMediaPlayer.Identity)
-            self._mpris_names[player.name] = name
-
-        index = self._mpris_name_index.get(name)
-        if index:
-            self._mpris_name_index[player.name] += 1
-        else:
-            self._mpris_name_index[player.name] = 0
-
-        return (name, index)
 
     def _start_loop(self):
         self._loop = GLib.MainLoop()
@@ -548,16 +522,17 @@ class Py3status:
             # This branch is only needed for the test mode
             self._kill = True
 
-    def _is_mediaplayer_interface(self, player_id):
+    @staticmethod
+    def _is_mediaplayer_interface(player_id):
         return player_id.startswith(Interfaces.MEDIA_PLAYER)
 
     def _dbus_name_owner_changed(self, name, old_owner, new_owner):
         if not self._is_mediaplayer_interface(name):
             return
         if new_owner:
-            self._add_player(name, new_owner)
+            self._add_player(name)
         if old_owner:
-            self._remove_player(name, old_owner)
+            self._remove_player(name)
         self._set_player()
 
     def _set_player(self, update=True):
@@ -568,8 +543,6 @@ class Py3status:
         """
         players = []
         for name, player in self._mpris_players.items():
-            # we set the priority here as we need to establish the player name
-            # which might not be immediately available.
             player_priority_tuple = player.priority_tuple
             if player_priority_tuple:
                 players.append(player_priority_tuple)
@@ -584,53 +557,69 @@ class Py3status:
         """
         Monitor a player and update its status.
         """
-        sender_player_id = self._ownerToPlayerId.get(sender)
-        if not sender_player_id:
-            return
-        sender_player: [Player, None] = self._mpris_players.get(sender_player_id)
+        pass
 
-        if sender_player:
-            sender_player.player_on_change(data)
-
-    def _add_player(self, player_id, owner=None):
+    def _add_player(self, player_id):
         """
         Add player to mpris_players
         """
         player_id_parts_list = player_id.split(".")
         name_from_id = player_id_parts_list[3]
 
-        if (
-            not self._accept_all_players
-            and name_from_id not in self.player_priority
-        ):
-            return
+        identity = self._identity_cache.get(name_from_id)
+        if not identity:
+            dMediaPlayer = dMediaPlayer2(dbus_interface_info={"dbus_uri": player_id})
+            identity = str(dMediaPlayer.Identity)
+            self._identity_cache[name_from_id] = identity
 
-        if not owner:
-            try:
-                owner = self._dbus.get_name_owner(player_id)
-            except DBusException:
+        if self.player_priority:
+            # Expected value: numeric / False, None is cache miss.
+            priority = self._priority_cache.get(name_from_id, None)
+            if priority is None:
+                for i, _player in enumerate(self.player_priority):
+                    if _player == name_from_id or _player == identity:
+                        priority = i
+                        break
+
+                if priority is None:
+                    priority = self._random_player_priority
+                self._priority_cache[identity] = priority
+
+            if not isinstance(priority, int):
                 return
+
+        else:
+            priority = 0
+
+        identity_index = self._identity_index.get(identity, 0)
+        if identity_index:
+            self._identity_index[identity] += 1
+        else:
+            self._identity_index[identity] = 1
 
         name_with_instance = ".".join(player_id_parts_list[3:])
 
-        player = Player(self, player_id, name_from_id, name_with_instance)
+        player = Player(
+            self,
+            player_id=player_id,
+            name_from_id=name_from_id,
+            name_with_instance=name_with_instance,
+            name_priority=priority,
+            identity=identity,
+            identity_index=identity_index,
+        )
 
         self._mpris_players[player_id] = player
-        self._ownerToPlayerId[owner] = player_id
 
-    def _remove_player(self, player_id, owner):
+    def _remove_player(self, player_id):
         """
         Remove player from mpris_players
         """
-        if self._ownerToPlayerId.get(owner):
-            del self._ownerToPlayerId[owner]
-
         if self._mpris_players.get(player_id):
             del self._mpris_players[player_id]
 
     def _get_players(self):
-        players_list = "|".join(self.player_priority) if not self._accept_all_players else ''
-        for player in get_players_uri(players_list):
+        for player in get_players_uri():
             try:
                 # str(player) helps avoid to use dbus.Str(*) as dict key
                 self._add_player(str(player))
@@ -640,23 +629,15 @@ class Py3status:
         self._set_player()
 
     def _start_listener(self):
-        self._dbus.add_signal_receiver(
+        self._get_players()
+
+        self._name_owner_change_match = self._dbus.add_signal_receiver(
             handler_function=self._dbus_name_owner_changed,
             dbus_interface="org.freedesktop.DBus",
             signal_name="NameOwnerChanged",
         )
-        self._get_players()
 
         # Start listening things after initiating players.
-
-        self._dbus.add_signal_receiver(
-            self._player_on_change,
-            dbus_interface=Interfaces.PROPERTIES,
-            path=Interfaces.OBJECT_PATH,
-            signal_name=Interfaces.SIGNAL,
-            sender_keyword="sender",
-        )
-
         t = Thread(target=self._start_loop)
         t.daemon = True
         t.start()
@@ -677,6 +658,8 @@ class Py3status:
 
     def kill(self):
         self._kill = True
+        if self._name_owner_change_match:
+            self.parent._dbus._clean_up_signal_match(self._name_owner_change_match)
 
     def mpris(self):
         """
@@ -696,7 +679,9 @@ class Py3status:
 
             if current_player_id == self._player.id:
                 if self._format_contains_time:
-                    cached_until = self.py3.time_in(current_state_map.get("cached_until"))
+                    cached_until = self.py3.time_in(
+                        seconds=current_state_map.get("cached_until"), sync_to=0
+                    )
 
                 placeholders = {"state": current_state_map["state_icon"]}
                 color = current_state_map["color"]
@@ -812,5 +797,5 @@ if __name__ == "__main__":
     Run module in test mode.
     """
     from py3status.module_test import module_test
-    format = "{toggle} {state} {player} {previous} {next} {pause} {play} {stop} {length}"
-    module_test(Py3status, {"format": format})
+
+    module_test(Py3status)
