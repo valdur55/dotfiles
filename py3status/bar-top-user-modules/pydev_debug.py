@@ -21,8 +21,9 @@ def _connect_to_pydevd(port):
         return RESULT_DISCONNECTED
 
 init_result = RESULT_DISCONNECTED
-# Useful when you wan to hae import time hook
-#init_result = _connect_to_pydevd(DEFAULT_PORT)
+
+# Useful when you wan to have import time hook
+# init_result = _connect_to_pydevd(DEFAULT_PORT)
 
 class Py3status:
     """
