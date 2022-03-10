@@ -25,7 +25,7 @@ class Py3status:
         else:
             return f"Auto update off"
 
-    def autoupdate_sandbox(self):
+    def autoupdate_user(self):
         return {
             "cached_until": time.perf_counter() + self._update_interval if self._auto_update else self.py3.CACHE_FOREVER,
             "full_text": f"{self._get_val()}  {datetime.datetime.now().time()}",
