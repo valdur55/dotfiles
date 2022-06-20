@@ -200,7 +200,7 @@ bar {
 #     tray_output none
 #     output $center-screen
 #     #ajutiselt testimine
-#     #output $laptop-screen
+#     output $laptop-screen
 #     id bar-debug
 #     font pango:Ubuntu 10
 #     position bottom
