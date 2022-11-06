@@ -223,15 +223,16 @@ bindsym $mod+Control+l move workspace to output right
 
 # Remove borders. Upper border will come when in tabbed window
 for_window [class=".*"] title_window_icon on
-new_window 1pixel
-new_float 1pixel
+new_window pixel 1
+new_float pixel 1
+#for_window [class="\w*"] border pixel 1
 
 # Google chrome and vlc will be without borders.
-for_window [class="^Chrome$" title=" - Chromium$"] border none   move window to workspace 2
+for_window [class="^Chrome$"] border none
 for_window [class="^vlc$" title=" - vlc$"] border none
 
 
-#TTeamviewer
+#Teamviewer
 for_window [class="^TeamViewer.exe$"] floating enable
 for_window [title="^Computers & Contacts$"] floating enable
 for_window [title="- TeamViewer -"] floating enable
