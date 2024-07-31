@@ -20,7 +20,7 @@ def _connect_to_pydevd(port):
     except Exception:
         return RESULT_DISCONNECTED
 
-init_result = RESULT_DISCONNECTED
+init_result = _connect_to_pydevd(DEFAULT_PORT)
 
 # Useful when you wan to have import time hook
 #init_result = _connect_to_pydevd(DEFAULT_PORT)
