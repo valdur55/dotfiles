@@ -31,7 +31,7 @@ set $once /usr/share/sway/scripts/once.sh
 
 # Your preferred terminal emulator
 set $term footclient
-set $term_cwd $term -D "$(swaycwd 2>/dev/null || echo $HOME)"
+set $term_cwd footclient -D "$(swaycwd 2>/dev/null || echo $HOME)"
 set $term_float footclient --app-id floating_shell --window-size-chars 82x25
 
 # Your preferred task manager
@@ -90,7 +90,7 @@ set $sleep_timeout_ac 3600
 set $sleep_delay 2
 
 ### Autostart applications definition. Can be removed soon-ish as it is being imported in userspace.
-include /etc/sway/autostart
+include $HOME/.config/sway/autostart
 
 # hide cursor after 5 seconds of inactivty
 seat seat0 hide_cursor 5000
@@ -132,6 +132,6 @@ set $screenshot_selection_upload $pipe_selection | $upload_pipe
 
 set $update-manager '/usr/share/sway/scripts/checkupdates.sh upgrade'
 
-include /etc/sway/autostart
+include $HOME/.config/sway/autostart
 
 set $emoji-picker emoji-picker
