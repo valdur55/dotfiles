@@ -11,7 +11,7 @@ set $theme /usr/share/sway/themes/matcha-green
 include $theme/theme.conf
 
 # user theme variable can override the global theme
-# include $HOME/.config/sway/definitions.d/theme.conf
+include $HOME/.config/sway/definitions.d/theme.conf
 
 # global variables
 include $HOME/.config/sway/definitions
