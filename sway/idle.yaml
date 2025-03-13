@@ -1,5 +1,6 @@
-debug: false
-wait: true
+---
+debug: true
+wait: false
 timeouts:
   # idle_timeout
   - timeout: 240
@@ -9,9 +10,9 @@ timeouts:
   - timeout: 300
     command: swaymsg exec \$locking
   # keyboard_timeout
-  #- timeout: 600
-  #  command: /usr/share/sway/scripts/keyboard-backlight-switch.sh off
-  #  resume: /usr/share/sway/scripts/keyboard-backlight-switch.sh on
+  - timeout: 600
+    command: /usr/share/sway/scripts/keyboard-backlight-switch.sh off
+    resume: /usr/share/sway/scripts/keyboard-backlight-switch.sh on
   # screen_timeout
   - timeout: 600
     command: swaymsg "output * power off"
@@ -22,10 +23,11 @@ timeouts:
     resume:  send-433 ah && sleep 1 && swaymsg "output * dpms on"
   # sleep_timeout_bat
   - timeout: 900
-    command: acpi --ac-adapter | grep -v 'on-line' && send-433 ekv && systemctl suspend
+    command: acpi --ac-adapter | grep -v 'on-line' && send-433 ekv && systemctl sleep
   # sleep_timeout_ac
   - timeout: 3600
-    command: acpi --ac-adapter | grep 'on-line' && send-433 ekv && systemctl suspend
-before-sleep: playerctl pause; swaymsg exec \$locking
+    command: acpi --ac-adapter | grep 'on-line' && send-433 ekv && systemctl sleep
+before-sleep: swaymsg exec \$locking
 after-resume: sleep 5 ; send-433 ah ; swaymsg "output * dpms on"
 lock: swaymsg exec \$locking
+idlehint: '240'
