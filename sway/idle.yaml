@@ -15,17 +15,17 @@ timeouts:
   # screen_timeout
   - timeout: 600
     command: swaymsg "output * power off"
-    resume: swaymsg "output * power on" ; && send-433 ah
+    resume: sleep 5 && send-433 ah && swaymsg "output * power on"
   # dpms_timeout
   - timeout: 600
     command: swaymsg "output * dpms off" && send-433 ek
-    resume: swaymsg "output * dpms on" ; send-433 ah
+    resume:  send-433 ah && sleep 1 && swaymsg "output * dpms on"
   # sleep_timeout_bat
   - timeout: 900
-    command: acpi -b | grep Discharging && send-433 ekv && systemctl suspend
+    command: acpi --ac-adapter | grep -v 'on-line' && send-433 ekv && systemctl suspend
   # sleep_timeout_ac
   - timeout: 3600
-    command: acpi -b | grep Discharging; test $? -eq 1 && send-433 ekv && systemctl suspend
+    command: acpi --ac-adapter | grep 'on-line' && send-433 ekv && systemctl suspend
 before-sleep: playerctl pause; swaymsg exec \$locking
-after-resume: sleep 5 ; send-433 ah
+after-resume: sleep 5 ; send-433 ah ; swaymsg "output * dpms on"
 lock: swaymsg exec \$locking
