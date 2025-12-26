@@ -160,10 +160,13 @@ SAMPLE OUTPUT
 down
 {'color': '#ff0000', 'full_text': 'WW: down'}
 """
-
+from threading import Thread
 from datetime import timedelta
 
 from dbus import Interface, SystemBus
+from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import GLib
+import sys
 
 STRING_MODEM_ERROR = "MM_MODEM_STATE_FAILED"
 STRING_NOT_INSTALLED = "not installed"
@@ -180,6 +183,20 @@ MM_DBUS_INTERFACE_MODEM_SIMPLE = MM_DBUS_INTERFACE_MODEM + '.Simple'
 MM_DBUS_INTERFACE_MODEM_MESSAGING = MM_DBUS_INTERFACE_MODEM + '.Messaging'
 
 
+MM_MODEM_STATE_FAILED        = -1,
+MM_MODEM_STATE_UNKNOWN       = 0,
+MM_MODEM_STATE_INITIALIZING  = 1,
+MM_MODEM_STATE_LOCKED        = 2,
+MM_MODEM_STATE_DISABLED      = 3,
+MM_MODEM_STATE_DISABLING     = 4,
+MM_MODEM_STATE_ENABLING      = 5,
+MM_MODEM_STATE_ENABLED       = 6,
+MM_MODEM_STATE_SEARCHING     = 7,
+MM_MODEM_STATE_REGISTERED    = 8,
+MM_MODEM_STATE_DISCONNECTING = 9,
+MM_MODEM_STATE_CONNECTING    = 10,
+MM_MODEM_STATE_CONNECTED     = 11
+
 class Py3status:
     """ """
 
@@ -191,6 +208,7 @@ class Py3status:
         r"[{format_ipv4}[\?soft  ]{format_ipv6}]"
         "|{state_name}][ SMS {messages} [{format_message}]]"
     )
+    #format = "{access_technologies} {access_technologies_name} {current_bands} {current_bands_name} {format_ipv4} {format_ipv6} {format_message} {format_stats} {interface_name} {m3gpp_registration_state} {m3gpp_operator_code} {m3gpp_operator_name} {message} {messages} {signal_quality_0} {signal_quality_1} {state} {state_name}"
     format_ipv4 = "[{address}]"
     format_ipv6 = "[{address}]"
     format_message = r"\?if=index<2 {number} [\?max_length=10 {text}...]"
@@ -199,6 +217,8 @@ class Py3status:
     format_stats = "{duration_hms}"
     modem = None
     thresholds = [(0, "bad"), (11, "good")]
+
+    _signal_bearer = None
 
     def post_config_hook(self):
         modem_manager = ["ModemManager", "/usr/sbin/ModemManager"]
@@ -331,7 +351,6 @@ class Py3status:
             256: "auto",
         }
 
-        self._dbus = SystemBus()
         self.init = {
             "ip": [],
             "sms_message": [],
@@ -378,6 +397,171 @@ class Py3status:
                             if name not in self.init["sms_message"]:
                                 self.init["sms_message"].append(name)
 
+        # start last
+        self._kill = False
+        self._active_modem = None
+        self._dbus_loop = DBusGMainLoop()
+        self._dbus = SystemBus(mainloop=self._dbus_loop)
+        self._set_modem_proxy()
+        self._start_listener()
+
+
+    def _start_loop(self):
+        self._loop = GLib.MainLoop()
+        GLib.timeout_add(1000, self._timeout)
+        try:
+            self._loop.run()
+        except KeyboardInterrupt:
+            # This branch is only needed for the test mode
+            self._kill = True
+
+    def _start_listener(self):
+        self._signal_interface_added = self._dbus.add_signal_receiver(
+            dbus_interface="org.freedesktop.DBus.ObjectManager",
+            signal_name="InterfacesAdded",
+            handler_function=self._dbus_interface_added,
+            path_keyword='path',
+            interface_keyword='iface',
+            member_keyword='member',
+        )
+
+        self._signal__interface_removed = self._dbus.add_signal_receiver(
+            dbus_interface="org.freedesktop.DBus.ObjectManager",
+            signal_name="InterfacesRemoved",
+            handler_function=self._dbus_interface_removed,
+            path_keyword='path',
+            interface_keyword='iface',
+            member_keyword='member',
+        )
+
+        self._dbus.add_signal_receiver(
+            self._changes,
+            dbus_interface="org.freedesktop.DBus.Properties",
+            path=MM_DBUS_PATH,
+            signal_name="PropertiesChanged",
+            interface_keyword='iface',
+            member_keyword='member',
+        )
+
+        self._name_owner_change_match = self._dbus.add_signal_receiver(
+            handler_function=self._dbus_name_owner_changed,
+            dbus_interface="org.freedesktop.DBus",
+            signal_name="NameOwnerChanged",
+        )
+
+        t = Thread(target=self._start_loop)
+        t.daemon = True
+        t.start()
+
+    def _timeout(self):
+        if self._kill:
+            self._loop.quit()
+            sys.exit(0)
+
+    def _dbus_name_owner_changed(self, interface, old, new):
+        if interface == MM_DBUS_INTERFACE:
+            self.py3.update()
+
+    def _changes(self, *args, **kwargs):
+        self.py3.update()
+
+    def _dbus_changes_bearer(self, *args, **kwargs):
+        self.py3.update()
+
+    def _dbus_changes_modem(self, old, new, reason):
+        if new == MM_MODEM_STATE_CONNECTED:
+            bearer = self._get_bearer()
+            self._subscribe_bearer(bearer)
+            self.py3.update()
+        elif new == MM_MODEM_STATE_DISCONNECTING:
+            if self._signal_bearer:
+                self._signal_bearer.remove()
+                self._signal_bearer = None
+            self.py3.update()
+
+
+    def _subscribe_bearer(self, bearer):
+        if self._signal_bearer:
+            self._signal_bearer.remove()
+            self._signal_bearer = None
+
+        if not bearer:
+            return
+
+        self._signal_bearer = self._dbus.add_signal_receiver(
+            self._dbus_changes_bearer,
+            dbus_interface="org.freedesktop.DBus.Properties",
+            path=bearer,
+            signal_name="PropertiesChanged",
+            interface_keyword='iface',
+            member_keyword='member',
+        )
+
+    def _dbus_changes_modem_messaging(self, *args, **kwargs):
+        self.py3.update()
+
+    def _dbus_interface_added(self, *args, **kwargs):
+        if kwargs["path"] == MM_DBUS_PATH:
+            self._add_new_modem(args[0])
+
+    def _dbus_changes_modem_properties(self, *args, **kwargs):
+        self.py3.update()
+
+    def _dbus_changes_modem_simple(self, *args, **kwargs):
+        self.py3.update()
+
+
+    def _add_new_modem(self, path):
+        if self._active_modem == path:
+            return
+
+        self._active_modem = path
+
+        self._dbus_proxy = self._dbus.get_object(MM_DBUS_INTERFACE, path)
+        self._dbus_props_iface = Interface(self._dbus_proxy, dbus_interface=DBUS_INTERFACE_PROPERTIES)
+
+        self._signal_modem = self._dbus.add_signal_receiver(
+            self._dbus_changes_modem,
+            dbus_interface=MM_DBUS_INTERFACE_MODEM,
+            path=path,
+        )
+
+        self._modem_properties_changed_match = self._dbus.add_signal_receiver(
+            self._dbus_changes_modem_properties,
+            dbus_interface="org.freedesktop.DBus.Properties",
+            path=path,
+            signal_name="PropertiesChanged",
+            interface_keyword='iface',
+            member_keyword='member',
+        )
+
+        bearer = self._get_bearer()
+        self._subscribe_bearer(bearer)
+
+        self._signal_modem_messaging = self._dbus.add_signal_receiver(
+            self._dbus_changes_modem_messaging,
+            dbus_interface=MM_DBUS_INTERFACE_MODEM_MESSAGING,
+            path=path,
+            interface_keyword='iface',
+            member_keyword='member',
+        )
+
+        self._signal_modem_simple = self._dbus.add_signal_receiver(
+            self._dbus_changes_modem_simple,
+            dbus_interface=MM_DBUS_INTERFACE_MODEM_SIMPLE,
+            path=path,
+        )
+
+    def _dbus_interface_removed(self, modem, *args, **kwargs):
+        if kwargs["path"] == MM_DBUS_PATH and modem == self._active_modem:
+            if self._signal_bearer:
+                self._signal_bearer.remove()
+            self._modem_properties_changed_match.remove()
+            self._signal_interface_added.remove()
+            self._signal_modem.remove()
+            self._signal_modem_simple.remove()
+            self._signal_modem_messaging.remove()
+
     def _set_modem_proxy(self):
         manager_proxy = self._dbus.get_object(MM_DBUS_INTERFACE, MM_DBUS_PATH)
         manager_iface = Interface(
@@ -390,8 +574,7 @@ class Py3status:
             eqid = _dbus_props_iface.Get(MM_DBUS_INTERFACE_MODEM, 'EquipmentIdentifier')
 
             if self.modem is None or self.modem == eqid:
-                self._dbus_proxy = _dbus_proxy
-                self._dbus_props_iface = _dbus_props_iface
+                self._add_new_modem(m)
                 return
 
         self._dbus_proxy = None
@@ -408,7 +591,7 @@ class Py3status:
         return modem_data
 
     def _get_bearer(self):
-        bearer = {}
+        bearer = ""
         try:
             bearer = self._dbus_props_iface.Get(MM_DBUS_INTERFACE_MODEM, 'Bearers')[0]
         except:  # noqa e722
@@ -484,7 +667,7 @@ class Py3status:
         name = "_name"
 
         # get wwan data
-        self._set_modem_proxy()
+
         wwan_data = self._get_modem_status_data()
         wwan_data = self._organize(wwan_data)
 
@@ -581,7 +764,7 @@ class Py3status:
                 self.py3.notify_user(notification)
 
         response = {
-            "cached_until": self.py3.time_in(self.cache_timeout),
+            "cached_until": self.py3.CACHE_FOREVER,
             "full_text": self.py3.safe_format(self.format, wwan_data),
         }
         if urgent:
