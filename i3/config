@@ -196,17 +196,17 @@ bar {
         status_command py3status --dbus-notify -i ~/.config/py3status/bar-top-user-modules -l ~/py3status-bar-top.log -c ~/.config/py3status/bar-top.conf
 }
 
-#bar {
-#     tray_output none
-#     output $center-screen
-#     #ajutiselt testimine
-#     output $laptop-screen
-#     id bar-debug
-#     font pango:Ubuntu 10
-#     position bottom
-#     workspace_buttons no
-#     status_command py3status --dbus-notify -i ~/.config/py3status/bar-debug-user-modules -l ~/py3status-bar-debug.log -c ~/.config/py3status/bar-debug.conf -d
-#}
+bar {
+     tray_output none
+     #output $center-screen
+     #ajutiselt testimine
+     output $laptop-screen
+     id bar-debug
+     font pango:Ubuntu 10
+     position bottom
+     workspace_buttons no
+     status_command py3status --dbus-notify -i ~/.config/py3status/bar-debug-user-modules -l ~/py3status-bar-debug.log -c ~/.config/py3status/bar-debug.conf -d
+}
 
 # Click to focus window
 focus_follows_mouse no

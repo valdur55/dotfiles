@@ -1,5 +1,5 @@
 """
-Attach pydevd compatible debuger on py3status load.
+Attach pydevd compatible debugger on py3status load.
 PyDev.Debugger (used in PyDev, PyCharm and VSCode Python)
 
 @author valdur55 valdur55@gmail.com
