@@ -7,7 +7,7 @@ PyDev.Debugger (used in PyDev, PyCharm and VSCode Python)
 SAMPLE OUTPUT
 {'full_text': '🐛'}
 """
-import pydevd
+import pydevd_pycharm
 
 DEFAULT_PORT = 6767
 RESULT_CONNECTED = "🐛"
@@ -15,7 +15,7 @@ RESULT_DISCONNECTED = "🍀"
 
 def _connect_to_pydevd(port):
     try:
-        pydevd.settrace('localhost', port=port, stdoutToServer=True, stderrToServer=True, suspend=False)
+        pydevd_pycharm.settrace('localhost', port=port, stdout_to_server=True, stderr_to_server=True, suspend=False)
         return RESULT_CONNECTED
     except Exception:
         return RESULT_DISCONNECTED
@@ -46,7 +46,7 @@ class Py3status:
 
     def on_click(self, event):
         try:
-            pydevd.stoptrace()
+            pydevd_pycharm.stoptrace()
         except Exception:
             pass
 

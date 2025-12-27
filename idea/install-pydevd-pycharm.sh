@@ -1,5 +1,5 @@
 #!/bin/bash
 #Install:
-pip3 install pydevd-pycharm~=193.7288.26
-#MONKEY-PATCH version reporting to make buggy .30 plugin happy (IDEA 2019.3.5)
-sed -i "s/193.7288.30/193.7288.26/" ~/.local/lib/python3.*/site-packages/_pydevd_bundle/pydevd_comm.py
+pipx inject py3status pydevd-pycharm~=253.29346.138
+#MONKEY-PATCH version reporting to make buggy .142 plugin happy (IntelliJ IDEA 2025.3.1)
+sed -i "s/253.29346.142/253.29346.138/" ~/.local/share/pipx/venvs/py3status/lib/python3.13/site-packages/_pydevd_bundle/pydevd_comm.py
