@@ -28,6 +28,6 @@ timeouts:
   - timeout: 3600
     command: acpi --ac-adapter | grep 'on-line' && send-433 ekv && systemctl sleep
 before-sleep: swaymsg exec \$locking
-after-resume: sleep 5 ; send-433 ah ; swaymsg "output * dpms on"
+after-resume: sleep 5 ; desktop-resume-433 ; swaymsg "output * dpms on"
 lock: swaymsg exec \$locking
 idlehint: '240'
