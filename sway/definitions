@@ -3,7 +3,7 @@
 #
 # Logo key. Use Mod1 for Alt and Mod4 for Super.
 set $mod Mod4
-set $alt_mod Mod1
+set $alt_mod Alt
 
 # Direction keys
 set $left Left
@@ -29,6 +29,21 @@ set $unbindsym unbindsym --to-code
 # Script paths
 set $script_path /usr/share/sway/scripts
 
+# Theme application (override any variable with "" to disable)
+set $apply_gtk_theme $script_path/enable-gtk-theme.sh "$gtk-theme"
+set $apply_icon_theme gsettings set org.gnome.desktop.interface icon-theme "$icon-theme"
+set $apply_color_scheme gsettings set org.gnome.desktop.interface color-scheme "$gtk-color-scheme"
+set $apply_cursor_theme $script_path/enable-cursor-theme.sh "$cursor-theme"
+set $apply_gui_font gsettings set org.gnome.desktop.interface font-name "$gui-font"
+set $configure_input_sources gsettings set org.gnome.desktop.input-sources show-all-sources true
+set $apply_monospace_font gsettings set org.gnome.desktop.interface monospace-font-name "$term-font"
+set $configure_fontconfig $script_path/fontconfig.sh "monospace" "$term-font"
+set $apply_vscode_settings $script_path/update-vscode-settings.sh "$term-font" "$vscode-theme"
+set $apply_zed_settings $script_path/update-zed-settings.sh "$term-font" "$vscode-theme"
+set $generate_background $script_path/generate-bg.sh "$accent-color" "$text-color" "$background-color"
+set $generate_waybar_style $script_path/generate-waybar-style.sh "$background-color" "$text-color" "$accent-color" "$color8" "$color9"
+set $apply_kvantum_theme kvantummanager --set "$kvantum-theme"
+
 # Terminal emulator
 set $term footclient
 set $term_cwd $term -D "$(swaycwd 2>/dev/null || echo $HOME)"
@@ -51,12 +66,12 @@ set $scale_down $script_path/scale.sh down
 set $scale_default $script_path/scale.sh default
 
 # Audio control
-set $sink_volume pactl get-sink-volume @DEFAULT_SINK@ | grep '^Volume:' | cut -d / -f 2 | tr -d ' ' | sed 's/%//'
-set $source_volume pactl get-source-volume @DEFAULT_SOURCE@ | grep '^Volume:' | cut -d / -f 2 | tr -d ' ' | sed 's/%//'
-set $volume_down $onscreen_bar $(pactl set-sink-volume @DEFAULT_SINK@ -5% && $sink_volume)
-set $volume_up $onscreen_bar $(pactl set-sink-volume @DEFAULT_SINK@ +5% && $sink_volume)
-set $volume_mute $onscreen_bar $(pactl set-sink-mute @DEFAULT_SINK@ toggle && pactl get-sink-mute @DEFAULT_SINK@ | sed -En "/no/ s/.*/$($sink_volume)/p; /yes/ s/.*/0/p")
-set $mic_mute $onscreen_bar $(pactl set-source-mute @DEFAULT_SOURCE@ toggle && pactl get-source-mute @DEFAULT_SOURCE@ | sed -En "/no/ s/.*/$($source_volume)/p; /yes/ s/.*/0/p")
+set $sink_volume wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{printf "%d", $2*100}'
+set $source_volume wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | awk '{printf "%d", $2*100}'
+set $volume_down $onscreen_bar $(wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- && $sink_volume)
+set $volume_up $onscreen_bar $(wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ && $sink_volume)
+set $volume_mute $onscreen_bar $(wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED && echo 0 || $sink_volume)
+set $mic_mute $onscreen_bar $(wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle && wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED && echo 0 || $source_volume)
 
 # Rofi theme
 set $rofi_theme "* {\nlightbg: $background-color;\nbackground: $background-color;\nlightfg: $accent-color;\nforeground: $text-color;\n}\nwindow {\nwidth: 25em;\n}\n"
@@ -109,14 +124,13 @@ set $ws10 number 10
 set $grimshot grimshot
 set $pipe_output $grimshot save output -
 set $pipe_selection $grimshot save area -
-set $notify_paste [[ $(wl-paste -l) == "image/png" ]] && notify-send "Screenshot copied to clipboard"
 set $swappy swappy -f -
 set $upload_pipe curl -s -F "file=@-;filename=.png" https://x0.at/ | tee >(wl-copy) >(xargs notify-send)
 
-set $screenshot_screen $pipe_output | $swappy && $notify_paste
+set $screenshot_screen $pipe_output | $swappy
 set $screenshot_screen_upload $pipe_output | $upload_pipe
 
-set $screenshot_selection $pipe_selection | $swappy && $notify_paste
+set $screenshot_selection $pipe_selection | $swappy
 set $screenshot_selection_upload $pipe_selection | $upload_pipe
 
 # Update manager
