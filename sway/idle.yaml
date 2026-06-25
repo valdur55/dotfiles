@@ -15,8 +15,8 @@ timeouts:
     resume: /usr/share/sway/scripts/keyboard-backlight-switch.sh on
   # screen_timeout
   - timeout: 600
-    command: swaymsg "output * power off" && send-433 ek
-    resume: sleep 5 && send-433 ah && swaymsg "output * power on"
+    command: swaymsg "output * power off" && send-433_idle_idle ek
+    resume: sleep 5 && send-433_idle_idle ah && swaymsg "output * power on"
   # sleep_timeout_bat
   - timeout: 900
     command: acpi --ac-adapter | grep -v 'on-line' && systemctl sleep
