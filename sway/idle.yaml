@@ -15,15 +15,16 @@ timeouts:
     resume: /usr/share/sway/scripts/keyboard-backlight-switch.sh on
   # screen_timeout
   - timeout: 600
-    command: swaymsg "output * power off" && send-433_idle_idle ek
-    resume: sleep 5 && send-433_idle_idle ah && swaymsg "output * power on"
+    command: swaymsg "output * power off" && send_433_idle ek
+    resume: send_433_idle ah && swaymsg "output * power on"
   # sleep_timeout_bat
   - timeout: 900
-    command: acpi --ac-adapter | grep -v 'on-line' && systemctl sleep
+    command: acpi --ac-adapter | grep -v 'on-line' && send_433_idle ekv && systemctl sleep
   # sleep_timeout_ac
   - timeout: 3600
-    command: acpi --ac-adapter | grep 'on-line' && systemctl sleep
+   # command: acpi --ac-adapter | grep 'on-line' && send_433_idle ekv && systemctl sleep
+    command:  send_433_idle ekv && systemctl sleep
 before-sleep: swaymsg exec \$locking
-after-resume: swaymsg "output * power on" && brightnessctl -r
+after-resume: sleep 5 && desktop-resume-433 && swaymsg "output * power on" && brightnessctl -r
 lock: swaymsg exec \$locking
 idlehint: '240'
